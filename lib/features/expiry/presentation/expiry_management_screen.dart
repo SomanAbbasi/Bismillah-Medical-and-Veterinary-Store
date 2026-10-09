@@ -144,12 +144,12 @@ class _ExpiryMedicineList extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: isExpiredTab ? AppColors.dangerLight : AppColors.amberLight,
+                  color: isExpiredTab ? AppColors.dangerLight : AppColors.warningLight,
                   borderRadius: AppRadii.roundedMd,
                 ),
                 child: Icon(
                   isExpiredTab ? Icons.cancel_outlined : Icons.access_time_filled,
-                  color: isExpiredTab ? AppColors.danger : AppColors.amber,
+                  color: isExpiredTab ? AppColors.danger : AppColors.warning,
                   size: 22,
                 ),
               ),

@@ -99,6 +99,10 @@ class InventoryRepository {
   Future<int> setReminderDisabled(int id, bool isDisabled) {
     return _db.setMedicineReminderStatus(id, isDisabled);
   }
+
+  Future<int> toggleReminderDisabled(int id, bool isDisabled) {
+    return _db.setMedicineReminderStatus(id, isDisabled);
+  }
 }
 
 final inventoryRepositoryProvider = Provider<InventoryRepository>((ref) {

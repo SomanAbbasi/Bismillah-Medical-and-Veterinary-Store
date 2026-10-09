@@ -22,7 +22,7 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final medicinesAsync = ref.watch(medicinesWithBatchesStreamProvider);
+    final medicinesAsync = ref.watch(medicinesStreamProvider);
     final customersAsync = ref.watch(customersWithBalancesStreamProvider);
     final suppliersAsync = ref.watch(suppliersWithBalancesStreamProvider);
 
@@ -37,7 +37,7 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
             color: AppColors.surface,
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
             child: SearchField(
-              hint: 'Search medicines, generics, customers, suppliers...',
+              hint: 'Search medicines, generics, categories, customers...',
               onChanged: (val) => setState(() => _query = val.toLowerCase().trim()),
             ),
           ),
@@ -46,7 +46,7 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
             child: _query.isEmpty
                 ? const Center(
                     child: Text(
-                      'Type above to search across medicines, batches, customers, and suppliers',
+                      'Type above to search across medicines, categories, and customer accounts',
                       style: AppTypography.bodyMedium,
                       textAlign: TextAlign.center,
                     ),
@@ -60,11 +60,11 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
                         error: (_, _) => const SizedBox(),
                         data: (medicines) {
                           final matchingMeds = medicines.where((m) {
-                            final nameMatch = m.medicine.name.toLowerCase().contains(_query);
-                            final genMatch = m.medicine.genericName.toLowerCase().contains(_query);
-                            final brandMatch = m.medicine.brand.toLowerCase().contains(_query);
-                            final batchMatch = m.batches.any((b) => b.batchNumber.toLowerCase().contains(_query));
-                            return nameMatch || genMatch || brandMatch || batchMatch;
+                            final nameMatch = m.name.toLowerCase().contains(_query);
+                            final genMatch = m.genericName.toLowerCase().contains(_query);
+                            final brandMatch = m.brand.toLowerCase().contains(_query);
+                            final catMatch = m.category.toLowerCase().contains(_query);
+                            return nameMatch || genMatch || brandMatch || catMatch;
                           }).toList();
 
                           if (matchingMeds.isEmpty) return const SizedBox();
@@ -86,13 +86,13 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
                                   child: ListTile(
                                     contentPadding: EdgeInsets.zero,
                                     leading: const Icon(Icons.medication, color: AppColors.primary),
-                                    title: Text(m.medicine.name, style: AppTypography.labelLarge),
+                                    title: Text(m.name, style: AppTypography.labelLarge),
                                     subtitle: Text(
-                                      '${m.medicine.genericName.isNotEmpty ? "${m.medicine.genericName} • " : ""}${m.availableStock} ${m.medicine.unit}s available',
+                                      '${m.genericName.isNotEmpty ? "${m.genericName} • " : ""}${m.category}',
                                       style: AppTypography.bodySmall,
                                     ),
                                     trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-                                    onTap: () => context.push('/inventory/${m.medicine.id}'),
+                                    onTap: () => context.push('/inventory/${m.id}'),
                                   ),
                                 );
                               }),
@@ -151,10 +151,9 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
                         error: (_, _) => const SizedBox(),
                         data: (suppliers) {
                           final matchingSup = suppliers.where((s) {
-                            final nameMatch = s.supplier.name.toLowerCase().contains(_query);
-                            final compMatch = (s.supplier.company ?? '').toLowerCase().contains(_query);
-                            final phoneMatch = s.supplier.phone.toLowerCase().contains(_query);
-                            return nameMatch || compMatch || phoneMatch;
+                            final nameMatch = s.name.toLowerCase().contains(_query);
+                            final phoneMatch = s.phone.toLowerCase().contains(_query);
+                            return nameMatch || phoneMatch;
                           }).toList();
 
                           if (matchingSup.isEmpty) return const SizedBox();
@@ -176,10 +175,10 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
                                   child: ListTile(
                                     contentPadding: EdgeInsets.zero,
                                     leading: const Icon(Icons.local_shipping_outlined, color: AppColors.primaryLight),
-                                    title: Text(s.supplier.name, style: AppTypography.labelLarge),
-                                    subtitle: Text('${s.supplier.company ?? "Direct"} • ${s.supplier.phone}', style: AppTypography.bodySmall),
+                                    title: Text(s.name, style: AppTypography.labelLarge),
+                                    subtitle: Text(s.phone, style: AppTypography.bodySmall),
                                     trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-                                    onTap: () => context.push('/suppliers/${s.supplier.id}'),
+                                    onTap: () => context.push('/suppliers/${s.id}'),
                                   ),
                                 );
                               }),

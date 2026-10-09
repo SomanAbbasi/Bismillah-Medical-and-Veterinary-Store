@@ -19,9 +19,7 @@ class SupplierWithBalance {
 }
 
 class SupplierRepository {
-  final AppDatabase _db;
-
-  SupplierRepository(this._db);
+  SupplierRepository(AppDatabase _);
 
   Stream<List<SupplierWithBalance>> watchSuppliersWithBalances() {
     return Stream.value([]);

@@ -81,7 +81,7 @@ class SampleDataService {
       );
 
       // 4. Add Sales for Today
-      await db.insertSale(
+      await db.createSale(
         SalesCompanion(
           date: drift.Value(DateTime.now()),
           title: const drift.Value('Morning Counter Sale'),

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -51,7 +50,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        titleRow: Row(
+        title: Row(
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -60,7 +59,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 width: 38,
                 height: 38,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
+                errorBuilder: (context, error, stackTrace) => Container(
                   width: 38,
                   height: 38,
                   color: AppColors.primarySubtle,
@@ -240,7 +239,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     onAction: () => context.push('/expiry'),
                   ),
                   ...summary.topExpiringMedicines.take(4).map((med) {
-                    final status = ExpiryUtils.getStatus(med.expiryDate);
                     final isExpired = med.expiryDate.isBefore(DateFormatter.today());
 
                     return Container(
@@ -256,12 +254,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: isExpired ? AppColors.dangerLight : AppColors.amberLight,
+                              color: isExpired ? AppColors.dangerLight : AppColors.warningLight,
                               borderRadius: AppRadii.roundedSm,
                             ),
                             child: Icon(
                               isExpired ? Icons.cancel : Icons.access_time,
-                              color: isExpired ? AppColors.danger : AppColors.amber,
+                              color: isExpired ? AppColors.danger : AppColors.warning,
                               size: 20,
                             ),
                           ),
@@ -374,7 +372,7 @@ class _QuickActionButton extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
+                color: color.withValues(alpha: 0.12),
                 borderRadius: AppRadii.roundedMd,
               ),
               child: Icon(icon, color: color, size: 22),
