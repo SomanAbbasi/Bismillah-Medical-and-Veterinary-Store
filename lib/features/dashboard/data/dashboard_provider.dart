@@ -5,6 +5,7 @@ import '../../../core/utils/date_formatter.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../inventory/data/inventory_repository.dart';
 import '../../customers/data/customer_repository.dart';
+import '../../suppliers/data/supplier_repository.dart';
 import '../../sales/data/sales_repository.dart';
 import '../../expenses/data/expense_repository.dart';
 
@@ -13,6 +14,7 @@ class DashboardSummary {
   final int todayExpensesPaisa;
   final int todayNetPaisa;
   final int customerOutstandingPaisa;
+  final int supplierOutstandingPaisa;
   final int expiredMedicinesCount;
   final int expiringSoonMedicinesCount;
   final List<Medicine> topExpiringMedicines;
@@ -23,6 +25,7 @@ class DashboardSummary {
     required this.todayExpensesPaisa,
     required this.todayNetPaisa,
     required this.customerOutstandingPaisa,
+    required this.supplierOutstandingPaisa,
     required this.expiredMedicinesCount,
     required this.expiringSoonMedicinesCount,
     required this.topExpiringMedicines,
@@ -37,6 +40,7 @@ final dashboardSummaryProvider = FutureProvider<DashboardSummary>((ref) async {
   final salesRepo = ref.watch(salesRepositoryProvider);
   final expenseRepo = ref.watch(expenseRepositoryProvider);
   final customerRepo = ref.watch(customerRepositoryProvider);
+  final supplierRepo = ref.watch(supplierRepositoryProvider);
   final inventoryRepo = ref.watch(inventoryRepositoryProvider);
   final db = ref.watch(databaseProvider);
 
@@ -62,6 +66,12 @@ final dashboardSummaryProvider = FutureProvider<DashboardSummary>((ref) async {
 
   final overdueCustomers = customers.where((c) => c.balancePaisa > 0).toList()
     ..sort((a, b) => b.balancePaisa.compareTo(a.balancePaisa));
+
+  // Supplier Udhaar (Payables)
+  final suppliers = await supplierRepo.watchSuppliersWithBalances().first;
+  final supplierOutstandingPaisa = suppliers
+      .where((s) => s.balancePaisa > 0)
+      .fold(0, (sum, s) => sum + s.balancePaisa);
 
   // Medicines & Expiry
   final medicines = await inventoryRepo.getAllMedicines();
@@ -93,6 +103,7 @@ final dashboardSummaryProvider = FutureProvider<DashboardSummary>((ref) async {
     todayExpensesPaisa: todayExpensesPaisa,
     todayNetPaisa: todayNetPaisa,
     customerOutstandingPaisa: customerOutstandingPaisa,
+    supplierOutstandingPaisa: supplierOutstandingPaisa,
     expiredMedicinesCount: expiredCount,
     expiringSoonMedicinesCount: expiringSoonCount,
     topExpiringMedicines: expiringList,

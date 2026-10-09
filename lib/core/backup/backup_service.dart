@@ -53,9 +53,9 @@ class BackupManifest {
       };
 
   factory BackupManifest.fromJson(Map<String, dynamic> json) => BackupManifest(
-        appName: json['appName'] as String? ?? 'Bismillah Medical and Veterinary Store',
+        appName: json['appName'] as String? ?? 'PharmaLedger',
         appVersion: json['appVersion'] as String? ?? '1.0.0',
-        schemaVersion: json['schemaVersion'] as int? ?? 2,
+        schemaVersion: json['schemaVersion'] as int? ?? 3,
         timestamp: json['timestamp'] as String? ?? '',
         medicineCount: json['medicineCount'] as int? ?? 0,
         batchCount: json['batchCount'] as int? ?? 0,
@@ -98,6 +98,7 @@ class BackupService {
     // 1. Gather record statistics for manifest
     final medicines = await db.getAllMedicines();
     final customers = await db.getAllCustomers();
+    final suppliers = await db.getAllSuppliers();
     final sales = await db.select(db.sales).get();
     final expenses = await db.select(db.expenses).get();
     final attachments = await db.getAllAttachments();
@@ -105,14 +106,14 @@ class BackupService {
     final now = DateTime.now();
     final timestampStr = DateFormat('yyyy-MM-dd_HH-mm').format(now);
     final manifest = BackupManifest(
-      appName: 'Bismillah Medical and Veterinary Store',
+      appName: 'PharmaLedger',
       appVersion: '1.0.0',
       schemaVersion: db.schemaVersion,
       timestamp: now.toIso8601String(),
       medicineCount: medicines.length,
       batchCount: 0,
       customerCount: customers.length,
-      supplierCount: 0,
+      supplierCount: suppliers.length,
       saleCount: sales.length,
       expenseCount: expenses.length,
       attachmentCount: attachments.length,
@@ -158,7 +159,7 @@ class BackupService {
     final zipData = zipEncoder.encode(archive);
 
     final backupDir = await getBackupsDirectory();
-    final backupFileName = 'bismillah_store_backup_$timestampStr.zip';
+    final backupFileName = 'pharmaledger_backup_$timestampStr.zip';
     final backupFile = File(p.join(backupDir.path, backupFileName));
     await backupFile.writeAsBytes(zipData);
 
@@ -250,7 +251,7 @@ class BackupService {
     if (await backupFile.exists()) {
       await Share.shareXFiles(
         [XFile(backupFile.path)],
-        text: 'Bismillah Store Data Backup',
+        text: 'PharmaLedger Store Data Backup',
       );
     }
   }

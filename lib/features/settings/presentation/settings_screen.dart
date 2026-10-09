@@ -3,15 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/notifications/notification_service.dart';
+import '../../../core/notifications/expiry_reminder_scheduler.dart';
 import '../../../core/security/app_lock_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/date_formatter.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/primary_button.dart';
 import '../../../core/widgets/section_header.dart';
-import '../data/sample_data_service.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -21,25 +22,35 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  final _shopNameController = TextEditingController(text: 'Bismillah Medical and Veterinary Store');
+  final _shopNameController = TextEditingController(text: 'PharmaLedger');
   final _ownerNameController = TextEditingController();
   final _phoneController = TextEditingController();
 
-  int _defaultReminderMonths = 3;
-  bool _dailyReminders = true;
+  int _defaultReminderMonths = 1;
+  int _notificationIntervalMinutes = 1440; // Default: Daily (1440 mins)
   bool _isBiometricsAvailable = false;
   bool _isBusy = false;
+
+  NotificationDiagnosticInfo? _diagnostics;
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
     _checkBiometrics();
+    _loadDiagnostics();
   }
 
   Future<void> _checkBiometrics() async {
     final available = await ref.read(appLockServiceProvider.notifier).isBiometricsAvailable();
     if (mounted) setState(() => _isBiometricsAvailable = available);
+  }
+
+  Future<void> _loadDiagnostics() async {
+    final db = ref.read(databaseProvider);
+    final scheduler = ref.read(expiryReminderSchedulerProvider);
+    final diag = await scheduler.getDiagnostics(db);
+    if (mounted) setState(() => _diagnostics = diag);
   }
 
   Future<void> _loadSettings() async {
@@ -48,15 +59,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final ownerName = await db.getSetting('owner_name');
     final phone = await db.getSetting('phone');
     final reminderMonths = await db.getSetting('default_reminder_months');
-    final daily = await db.getSetting('daily_reminders');
+    final intervalMins = await db.getSetting('notification_interval_minutes');
 
     if (mounted) {
       setState(() {
-        if (shopName != null) _shopNameController.text = shopName;
+        if (shopName != null && shopName.isNotEmpty) _shopNameController.text = shopName;
         if (ownerName != null) _ownerNameController.text = ownerName;
         if (phone != null) _phoneController.text = phone;
-        if (reminderMonths != null) _defaultReminderMonths = int.tryParse(reminderMonths) ?? 3;
-        if (daily != null) _dailyReminders = daily == 'true';
+        if (reminderMonths != null) _defaultReminderMonths = int.tryParse(reminderMonths) ?? 1;
+        if (intervalMins != null) _notificationIntervalMinutes = int.tryParse(intervalMins) ?? 1440;
       });
     }
   }
@@ -67,12 +78,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await db.setSetting('owner_name', _ownerNameController.text.trim());
     await db.setSetting('phone', _phoneController.text.trim());
     await db.setSetting('default_reminder_months', _defaultReminderMonths.toString());
-    await db.setSetting('daily_reminders', _dailyReminders.toString());
+    await db.setSetting('notification_interval_minutes', _notificationIntervalMinutes.toString());
+
+    // Reconcile notifications after changing preferences
+    await ref.read(expiryReminderSchedulerProvider).reconcile(db);
+    await _loadDiagnostics();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Settings saved successfully!'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
+  }
+
+  Future<void> _rescheduleNow() async {
+    setState(() => _isBusy = true);
+    final db = ref.read(databaseProvider);
+    final scheduler = ref.read(expiryReminderSchedulerProvider);
+    final count = await scheduler.reconcile(db);
+    await _loadDiagnostics();
+    if (mounted) {
+      setState(() => _isBusy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Reconciled and scheduled $count active medicine reminder alarms.'),
           backgroundColor: AppColors.success,
         ),
       );
@@ -112,35 +144,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  Future<void> _handleLoadDemoData() async {
-    final confirmed = await ConfirmationDialog.show(
-      context: context,
-      title: 'Load Demo Records?',
-      message: 'This will add sample medicines (Panadol, Augmentin, Brufen), batches, and ledger records.',
-      confirmLabel: 'Load Demo Records',
-    );
-    if (!confirmed || !mounted) return;
-
-    setState(() => _isBusy = true);
-    final db = ref.read(databaseProvider);
-    final success = await SampleDataService.populateSampleData(db);
-
-    if (mounted) {
-      setState(() => _isBusy = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success ? 'Demo records loaded!' : 'Failed to load demo data'),
-          backgroundColor: success ? AppColors.success : AppColors.danger,
-        ),
-      );
-    }
-  }
-
   Future<void> _handleClearAllData() async {
     final confirmed = await ConfirmationDialog.show(
       context: context,
       title: 'Clear Store Records?',
-      message: 'This will permanently remove medicines, batches, sales, and ledger records.',
+      message: 'This will permanently remove medicines, sales, and ledger records.',
       confirmLabel: 'Delete All Records',
       isDestructive: true,
     );
@@ -149,6 +157,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     setState(() => _isBusy = true);
     final db = ref.read(databaseProvider);
     await db.clearAllData();
+    await ref.read(notificationServiceProvider).cancelAll();
+    await _loadDiagnostics();
 
     if (mounted) {
       setState(() => _isBusy = false);
@@ -176,7 +186,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               padding: AppSpacing.pagePadding,
               children: [
                 // Store Info
-                const SectionHeader(title: 'Store Profile'),
+                const SectionHeader(title: 'Medical Store Profile'),
                 Container(
                   padding: AppSpacing.cardPadding,
                   decoration: BoxDecoration(
@@ -192,7 +202,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                       const SizedBox(height: AppSpacing.md),
                       AppTextField(
-                        label: 'Phone Number',
+                        label: 'Owner Name (Optional)',
+                        controller: _ownerNameController,
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      AppTextField(
+                        label: 'Phone Number (Optional)',
                         controller: _phoneController,
                         keyboardType: TextInputType.phone,
                       ),
@@ -208,7 +223,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const SizedBox(height: AppSpacing.lg),
 
                 // Expiry Reminders Config
-                const SectionHeader(title: 'Expiry Alerts & Sounds'),
+                const SectionHeader(title: 'Notification Settings & Frequency'),
                 Container(
                   padding: AppSpacing.cardPadding,
                   decoration: BoxDecoration(
@@ -220,7 +235,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Remind me before expiry:',
+                        'Alert Me Before Medicine Expiry:',
                         style: AppTypography.labelMedium.copyWith(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: AppSpacing.xs),
@@ -238,15 +253,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         },
                       ),
                       const SizedBox(height: AppSpacing.md),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Daily Alerts', style: AppTypography.labelLarge),
-                        subtitle: const Text('Alert daily until medicine is sold or disposed', style: AppTypography.bodySmall),
-                        value: _dailyReminders,
-                        activeThumbColor: AppColors.primary,
-                        onChanged: (val) => setState(() => _dailyReminders = val),
+
+                      Text(
+                        'Reminder Notification Interval:',
+                        style: AppTypography.labelMedium.copyWith(fontWeight: FontWeight.w600),
                       ),
-                      const SizedBox(height: AppSpacing.sm),
+                      const SizedBox(height: AppSpacing.xs),
+                      DropdownButtonFormField<int>(
+                        initialValue: _notificationIntervalMinutes,
+                        decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 12)),
+                        items: const [
+                          DropdownMenuItem(value: 15, child: Text('Every 15 Minutes (Rapid / Testing)')),
+                          DropdownMenuItem(value: 30, child: Text('Every 30 Minutes')),
+                          DropdownMenuItem(value: 60, child: Text('Every 1 Hour (60 Minutes)')),
+                          DropdownMenuItem(value: 120, child: Text('Every 2 Hours')),
+                          DropdownMenuItem(value: 360, child: Text('Every 6 Hours')),
+                          DropdownMenuItem(value: 1440, child: Text('Daily (Every 24 Hours at 9:00 AM)')),
+                          DropdownMenuItem(value: 2880, child: Text('Every 2 Days')),
+                          DropdownMenuItem(value: 10080, child: Text('Weekly (Every 7 Days)')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) setState(() => _notificationIntervalMinutes = val);
+                        },
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
@@ -259,7 +290,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('🔔 Notification sound triggered! Check status bar.'),
+                                  content: Text('🔔 Notification sound triggered! Check system status bar.'),
                                   backgroundColor: AppColors.primary,
                                 ),
                               );
@@ -274,8 +305,72 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
+                // Diagnostic & Reliability Card
+                const SectionHeader(title: 'Notification Reliability & Diagnostics'),
+                Container(
+                  padding: AppSpacing.cardPadding,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: AppRadii.roundedLg,
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _DiagnosticRow(
+                        label: 'Notification Permission',
+                        value: (_diagnostics?.areNotificationsEnabled ?? true) ? 'Granted ✅' : 'Denied ❌',
+                        isGood: _diagnostics?.areNotificationsEnabled ?? true,
+                      ),
+                      const Divider(height: 16),
+                      _DiagnosticRow(
+                        label: 'Android Alarm Scheduling',
+                        value: (_diagnostics?.canScheduleExactAlarms ?? false) ? 'Exact Alarms Allowed ✅' : 'Inexact Idle Mode (Safe fallback) ℹ️',
+                        isGood: true,
+                      ),
+                      const Divider(height: 16),
+                      _DiagnosticRow(
+                        label: 'Active Scheduled Alarms',
+                        value: '${_diagnostics?.activeRemindersCount ?? 0} medicines',
+                        isGood: true,
+                      ),
+                      const Divider(height: 16),
+                      _DiagnosticRow(
+                        label: 'Last Schedule Sync',
+                        value: _diagnostics?.lastReconciledAt != null
+                            ? DateFormatter.formatDate(_diagnostics!.lastReconciledAt!)
+                            : 'Just initialized',
+                        isGood: true,
+                      ),
+                      if (_diagnostics?.nextExpectedNotification != null) ...[
+                        const Divider(height: 16),
+                        _DiagnosticRow(
+                          label: 'Next Scheduled Alert',
+                          value: DateFormatter.formatDate(_diagnostics!.nextExpectedNotification!),
+                          isGood: true,
+                        ),
+                      ],
+                      const SizedBox(height: AppSpacing.md),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primarySubtle,
+                            foregroundColor: AppColors.primary,
+                            elevation: 0,
+                          ),
+                          onPressed: _rescheduleNow,
+                          icon: const Icon(Icons.sync),
+                          label: const Text('Reschedule Reminders Now'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+
                 // App Lock Security
-                const SectionHeader(title: 'Security'),
+                const SectionHeader(title: 'Security & App Lock'),
                 Container(
                   padding: AppSpacing.cardPadding,
                   decoration: BoxDecoration(
@@ -340,7 +435,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ListTile(
                         leading: const Icon(Icons.cloud_upload_outlined, color: AppColors.primary),
                         title: const Text('Offline Backup & Restore', style: AppTypography.labelLarge),
-                        subtitle: const Text('Save ZIP file or restore data', style: AppTypography.bodySmall),
+                        subtitle: const Text('Export ZIP backup or restore store database', style: AppTypography.bodySmall),
                         trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                         onTap: () => context.push('/backup'),
                       ),
@@ -348,7 +443,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ListTile(
                         leading: const Icon(Icons.delete_sweep_outlined, color: AppColors.danger),
                         title: const Text('Recycle Bin (30-Day Trash)', style: AppTypography.labelLarge),
-                        subtitle: const Text('Restore soft-deleted medicines, sales & ledger records', style: AppTypography.bodySmall),
+                        subtitle: const Text('Restore recently deleted records or delete permanently', style: AppTypography.bodySmall),
                         trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                         onTap: () => context.push('/trash'),
                       ),
@@ -357,61 +452,75 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
-                // Database Actions
-                const SectionHeader(title: 'Data Management'),
+                // Danger Zone
+                const SectionHeader(title: 'Danger Zone'),
                 Container(
                   padding: AppSpacing.cardPadding,
                   decoration: BoxDecoration(
                     color: AppColors.surface,
                     borderRadius: AppRadii.roundedLg,
-                    border: Border.all(color: AppColors.border),
+                    border: Border.all(color: AppColors.danger.withValues(alpha: 0.2)),
                   ),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                foregroundColor: AppColors.success,
-                                side: const BorderSide(color: AppColors.success),
-                              ),
-                              onPressed: _handleLoadDemoData,
-                              icon: const Icon(Icons.playlist_add),
-                              label: const Text('Load Demo Data'),
-                            ),
+                      const Text(
+                        'Permanent Data Removal',
+                        style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.danger),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Clear all medicine, sale, expense, customer, and supplier records.',
+                        style: AppTypography.bodySmall,
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.danger,
+                            side: const BorderSide(color: AppColors.danger),
                           ),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                foregroundColor: AppColors.danger,
-                                side: const BorderSide(color: AppColors.danger),
-                              ),
-                              onPressed: _handleClearAllData,
-                              icon: const Icon(Icons.delete_outline),
-                              label: const Text('Clear All Data'),
-                            ),
-                          ),
-                        ],
+                          onPressed: _handleClearAllData,
+                          icon: const Icon(Icons.delete_forever),
+                          label: const Text('Clear All Store Records'),
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: AppSpacing.xl),
-
-                // Version Footer
-                const Center(
-                  child: Text(
-                    'Bismillah Medical and Veterinary Store • 100% Offline & Free',
-                    style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xxl),
+                const SizedBox(height: AppSpacing.huge),
               ],
             ),
+    );
+  }
+}
+
+class _DiagnosticRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool isGood;
+
+  const _DiagnosticRow({
+    required this.label,
+    required this.value,
+    required this.isGood,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary)),
+        Text(
+          value,
+          style: AppTypography.bodySmall.copyWith(
+            fontWeight: FontWeight.w600,
+            color: isGood ? AppColors.textPrimary : AppColors.danger,
+          ),
+        ),
+      ],
     );
   }
 }

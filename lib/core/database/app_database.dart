@@ -8,6 +8,8 @@ part 'app_database.g.dart';
   Medicines,
   Customers,
   CustomerTransactions,
+  Suppliers,
+  SupplierTransactions,
   Sales,
   Expenses,
   Attachments,
@@ -18,7 +20,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? e]) : super(e ?? openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -26,7 +28,7 @@ class AppDatabase extends _$AppDatabase {
       await m.createAll();
     },
     onUpgrade: (Migrator m, int from, int to) async {
-      // Re-create all tables for schema v2
+      // Re-create all tables on upgrade
       for (final table in allTables) {
         await m.deleteTable(table.actualTableName);
         await m.createTable(table);
@@ -117,6 +119,16 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  Future<int> updateMedicineScheduleInfo(int id, {DateTime? lastScheduledAt, DateTime? nextScheduledAt, int? notificationId}) {
+    return (update(medicines)..where((tbl) => tbl.id.equals(id))).write(
+      MedicinesCompanion(
+        lastScheduledAt: Value(lastScheduledAt),
+        nextScheduledAt: Value(nextScheduledAt),
+        notificationId: Value(notificationId),
+      ),
+    );
+  }
+
   // ==================== CUSTOMERS & LEDGER ====================
 
   Stream<List<Customer>> watchCustomers() {
@@ -201,6 +213,96 @@ class AppDatabase extends _$AppDatabase {
   Future<int> restoreCustomerTransaction(int id) {
     return (update(customerTransactions)..where((tbl) => tbl.id.equals(id))).write(
       const CustomerTransactionsCompanion(
+        isDeleted: Value(false),
+        deletedAt: Value.absent(),
+      ),
+    );
+  }
+
+  // ==================== SUPPLIERS & LEDGER ====================
+
+  Stream<List<Supplier>> watchSuppliers() {
+    return (select(suppliers)
+          ..where((tbl) => tbl.isDeleted.equals(false))
+          ..orderBy([(tbl) => OrderingTerm(expression: tbl.name, mode: OrderingMode.asc)]))
+        .watch();
+  }
+
+  Future<List<Supplier>> getAllSuppliers() {
+    return (select(suppliers)
+          ..where((tbl) => tbl.isDeleted.equals(false))
+          ..orderBy([(tbl) => OrderingTerm(expression: tbl.name, mode: OrderingMode.asc)]))
+        .get();
+  }
+
+  Future<Supplier?> getSupplierById(int id) {
+    return (select(suppliers)..where((tbl) => tbl.id.equals(id))).getSingleOrNull();
+  }
+
+  Future<int> insertSupplier(SuppliersCompanion entry) {
+    return into(suppliers).insert(entry);
+  }
+
+  Future<bool> updateSupplier(SuppliersCompanion entry) {
+    return update(suppliers).replace(entry);
+  }
+
+  Future<int> softDeleteSupplier(int id) {
+    return (update(suppliers)..where((tbl) => tbl.id.equals(id))).write(
+      SuppliersCompanion(
+        isDeleted: const Value(true),
+        deletedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<int> restoreSupplier(int id) {
+    return (update(suppliers)..where((tbl) => tbl.id.equals(id))).write(
+      const SuppliersCompanion(
+        isDeleted: Value(false),
+        deletedAt: Value.absent(),
+      ),
+    );
+  }
+
+  Stream<List<SupplierTransaction>> watchSupplierTransactions(int supplierId) {
+    return (select(supplierTransactions)
+          ..where((tbl) => tbl.supplierId.equals(supplierId) & tbl.isDeleted.equals(false))
+          ..orderBy([(tbl) => OrderingTerm(expression: tbl.date, mode: OrderingMode.asc)]))
+        .watch();
+  }
+
+  Future<List<SupplierTransaction>> getSupplierTransactions(int supplierId) {
+    return (select(supplierTransactions)
+          ..where((tbl) => tbl.supplierId.equals(supplierId) & tbl.isDeleted.equals(false))
+          ..orderBy([(tbl) => OrderingTerm(expression: tbl.date, mode: OrderingMode.asc)]))
+        .get();
+  }
+
+  Future<SupplierTransaction?> getSupplierTransactionById(int id) {
+    return (select(supplierTransactions)..where((tbl) => tbl.id.equals(id))).getSingleOrNull();
+  }
+
+  Future<int> recordSupplierTransaction(SupplierTransactionsCompanion entry) {
+    return into(supplierTransactions).insert(entry);
+  }
+
+  Future<bool> updateSupplierTransaction(SupplierTransactionsCompanion entry) {
+    return update(supplierTransactions).replace(entry);
+  }
+
+  Future<int> softDeleteSupplierTransaction(int id) {
+    return (update(supplierTransactions)..where((tbl) => tbl.id.equals(id))).write(
+      SupplierTransactionsCompanion(
+        isDeleted: const Value(true),
+        deletedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<int> restoreSupplierTransaction(int id) {
+    return (update(supplierTransactions)..where((tbl) => tbl.id.equals(id))).write(
+      const SupplierTransactionsCompanion(
         isDeleted: Value(false),
         deletedAt: Value.absent(),
       ),
@@ -373,6 +475,8 @@ class AppDatabase extends _$AppDatabase {
       await (delete(expenses)..where((tbl) => tbl.isDeleted.equals(true) & tbl.deletedAt.isSmallerOrEqualValue(cutoffDate))).go();
       await (delete(customerTransactions)..where((tbl) => tbl.isDeleted.equals(true) & tbl.deletedAt.isSmallerOrEqualValue(cutoffDate))).go();
       await (delete(customers)..where((tbl) => tbl.isDeleted.equals(true) & tbl.deletedAt.isSmallerOrEqualValue(cutoffDate))).go();
+      await (delete(supplierTransactions)..where((tbl) => tbl.isDeleted.equals(true) & tbl.deletedAt.isSmallerOrEqualValue(cutoffDate))).go();
+      await (delete(suppliers)..where((tbl) => tbl.isDeleted.equals(true) & tbl.deletedAt.isSmallerOrEqualValue(cutoffDate))).go();
     });
   }
 
@@ -380,8 +484,10 @@ class AppDatabase extends _$AppDatabase {
     return transaction(() async {
       await delete(sales).go();
       await delete(customerTransactions).go();
-      await delete(medicines).go();
       await delete(customers).go();
+      await delete(supplierTransactions).go();
+      await delete(suppliers).go();
+      await delete(medicines).go();
       await delete(expenses).go();
       await delete(attachments).go();
       await delete(inAppNotifications).go();

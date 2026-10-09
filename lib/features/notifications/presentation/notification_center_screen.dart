@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/database/database_provider.dart';
-import '../../../core/notifications/notification_service.dart';
+
+import '../../../core/notifications/expiry_reminder_scheduler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
@@ -25,7 +26,7 @@ class _NotificationCenterScreenState extends ConsumerState<NotificationCenterScr
   Future<void> _checkNow() async {
     setState(() => _isChecking = true);
     final db = ref.read(databaseProvider);
-    final count = await ref.read(notificationServiceProvider).checkAndSyncExpiryReminders(db);
+    final count = await ref.read(expiryReminderSchedulerProvider).reconcile(db);
     if (mounted) {
       setState(() => _isChecking = false);
       ScaffoldMessenger.of(context).showSnackBar(

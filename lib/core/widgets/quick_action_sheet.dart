@@ -89,6 +89,16 @@ class QuickActionSheet extends StatelessWidget {
           context.push('/suppliers/new');
         },
       ),
+      _ActionItem(
+        icon: Icons.post_add,
+        label: 'Supplier Bill',
+        subtitle: 'Record payable invoice',
+        color: AppColors.warning,
+        onTap: () {
+          Navigator.pop(context);
+          context.push('/customers?tab=supplier');
+        },
+      ),
     ];
 
     return Container(

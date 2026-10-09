@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/database/database_provider.dart';
-import '../../../core/notifications/notification_service.dart';
+
+import '../../../core/notifications/expiry_reminder_scheduler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
@@ -23,7 +24,7 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
-  String _shopName = 'Bismillah Medical and Veterinary Store';
+  String _shopName = 'PharmaLedger';
 
   @override
   void initState() {
@@ -31,7 +32,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _loadShopName();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final db = ref.read(databaseProvider);
-      ref.read(notificationServiceProvider).checkAndSyncExpiryReminders(db);
+      ref.read(expiryReminderSchedulerProvider).reconcile(db);
     });
   }
 
@@ -157,16 +158,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         onTap: () => context.push('/expenses/new'),
                       ),
                       _QuickActionButton(
-                        icon: Icons.credit_card,
-                        label: 'Credit',
+                        icon: Icons.account_balance_wallet,
+                        label: 'Customer',
                         color: AppColors.danger,
-                        onTap: () => context.push('/customers/credit'),
+                        onTap: () => context.go('/customers?tab=customer'),
                       ),
                       _QuickActionButton(
-                        icon: Icons.payments,
-                        label: 'Payment',
-                        color: AppColors.success,
-                        onTap: () => context.push('/customers/payment'),
+                        icon: Icons.local_shipping,
+                        label: 'Supplier',
+                        color: AppColors.purple,
+                        onTap: () => context.go('/customers?tab=supplier'),
                       ),
                       _QuickActionButton(
                         icon: Icons.add_circle_outline,
@@ -209,25 +210,35 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       child: MetricCard(
                         title: "Customer Udhaar",
                         value: CurrencyFormatter.formatPaisa(summary.customerOutstandingPaisa),
+                        subtitle: "Receivable from customers",
                         icon: Icons.account_balance_wallet,
                         accentColor: AppColors.danger,
-                        onTap: () => context.go('/customers'),
+                        onTap: () => context.go('/customers?tab=customer'),
                       ),
                     ),
                     const SizedBox(width: AppSpacing.md),
                     Expanded(
                       child: MetricCard(
-                        title: "Expiry Alerts",
-                        value: '${summary.expiredMedicinesCount + summary.expiringSoonMedicinesCount}',
-                        subtitle: '${summary.expiredMedicinesCount} expired',
-                        icon: Icons.warning_amber_rounded,
-                        accentColor: (summary.expiredMedicinesCount + summary.expiringSoonMedicinesCount) > 0
-                            ? AppColors.danger
-                            : AppColors.success,
-                        onTap: () => context.push('/expiry'),
+                        title: "Supplier Debt",
+                        value: CurrencyFormatter.formatPaisa(summary.supplierOutstandingPaisa),
+                        subtitle: "Payable to distributors",
+                        icon: Icons.local_shipping_outlined,
+                        accentColor: AppColors.warning,
+                        onTap: () => context.go('/customers?tab=supplier'),
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                MetricCard(
+                  title: "Medicine Expiry Alerts",
+                  value: '${summary.expiredMedicinesCount + summary.expiringSoonMedicinesCount}',
+                  subtitle: '${summary.expiredMedicinesCount} already expired • ${summary.expiringSoonMedicinesCount} expiring soon',
+                  icon: Icons.warning_amber_rounded,
+                  accentColor: (summary.expiredMedicinesCount + summary.expiringSoonMedicinesCount) > 0
+                      ? AppColors.danger
+                      : AppColors.success,
+                  onTap: () => context.push('/expiry'),
                 ),
                 const SizedBox(height: AppSpacing.xl),
 

@@ -151,8 +151,8 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
                         error: (_, _) => const SizedBox(),
                         data: (suppliers) {
                           final matchingSup = suppliers.where((s) {
-                            final nameMatch = s.name.toLowerCase().contains(_query);
-                            final phoneMatch = s.phone.toLowerCase().contains(_query);
+                            final nameMatch = s.supplier.name.toLowerCase().contains(_query);
+                            final phoneMatch = s.supplier.phone.toLowerCase().contains(_query);
                             return nameMatch || phoneMatch;
                           }).toList();
 
@@ -175,10 +175,10 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
                                   child: ListTile(
                                     contentPadding: EdgeInsets.zero,
                                     leading: const Icon(Icons.local_shipping_outlined, color: AppColors.primaryLight),
-                                    title: Text(s.name, style: AppTypography.labelLarge),
-                                    subtitle: Text(s.phone, style: AppTypography.bodySmall),
+                                    title: Text(s.supplier.name, style: AppTypography.labelLarge),
+                                    subtitle: Text(s.supplier.phone, style: AppTypography.bodySmall),
                                     trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-                                    onTap: () => context.push('/suppliers/${s.id}'),
+                                    onTap: () => context.push('/suppliers/${s.supplier.id}'),
                                   ),
                                 );
                               }),
