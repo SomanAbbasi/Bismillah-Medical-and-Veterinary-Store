@@ -313,7 +313,28 @@ class _ExpiryMedicineList extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(med.name, style: AppTypography.labelLarge),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(med.name, style: AppTypography.labelLarge, overflow: TextOverflow.ellipsis),
+                        ),
+                        if (med.batchNumber != null && med.batchNumber!.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: AppColors.primarySubtle,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: AppColors.primary.withAlpha(80)),
+                            ),
+                            child: Text(
+                              'Batch: ${med.batchNumber}',
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primary),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                     const SizedBox(height: 2),
                     Text(
                       'Expiry: ${DateFormatter.formatDate(med.expiryDate)}${med.brand.isNotEmpty ? " • ${med.brand}" : ""}',

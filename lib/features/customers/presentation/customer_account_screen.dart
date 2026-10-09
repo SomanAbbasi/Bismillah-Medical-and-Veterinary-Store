@@ -113,6 +113,38 @@ class _CustomerAccountScreenState extends ConsumerState<CustomerAccountScreen> {
                   _shareStatement(item, history);
                 },
               ),
+              IconButton(
+                icon: const Icon(Icons.edit_outlined),
+                tooltip: 'Edit Customer',
+                onPressed: () async {
+                  await context.push('/customers/${cust.id}/edit');
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: AppColors.danger),
+                tooltip: 'Delete Customer',
+                onPressed: () async {
+                  final confirmed = await ConfirmationDialog.show(
+                    context: context,
+                    title: 'Delete Customer',
+                    message: 'Are you sure you want to move "${cust.name}" to the Recycle Bin? All transactions will be preserved.',
+                    isDestructive: true,
+                    confirmLabel: 'Delete',
+                  );
+                  if (confirmed && context.mounted) {
+                    await ref.read(customerRepositoryProvider).softDeleteCustomer(cust.id);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Customer "${cust.name}" moved to Recycle Bin.'),
+                          backgroundColor: AppColors.danger,
+                        ),
+                      );
+                      context.pop();
+                    }
+                  }
+                },
+              ),
             ],
           ),
           body: FutureBuilder<List<CustomerTransactionWithRunningBalance>>(

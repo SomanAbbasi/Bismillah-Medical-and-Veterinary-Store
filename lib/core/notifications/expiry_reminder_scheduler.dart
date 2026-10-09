@@ -108,42 +108,65 @@ class ExpiryReminderScheduler {
           tzScheduled = tzNow.add(const Duration(minutes: 2));
         }
 
+        final batchSuffix = (med.batchNumber != null && med.batchNumber!.isNotEmpty) ? ' (Batch: ${med.batchNumber})' : '';
         final title = isExpired
-            ? '🚨 EXPIRED: ${med.name}'
-            : '⚠️ EXPIRING SOON: ${med.name}';
+            ? '🚨 EXPIRED: ${med.name}$batchSuffix'
+            : '⚠️ EXPIRING SOON: ${med.name}$batchSuffix';
         final body = isExpired
             ? '${med.name} expired on ${DateFormatter.formatDate(med.expiryDate)}. Remove from store shelves immediately.'
             : '${med.name} expires on ${DateFormatter.formatDate(med.expiryDate)}. Check stock and prioritize sales.';
 
         final androidDetails = AndroidNotificationDetails(
           NotificationService.expiryChannelId,
-          'PharmaLedger Expiry Alerts',
+          'BismillahStore Expiry Alerts',
           channelDescription: 'Timely notifications for expiring and expired medicines',
           importance: Importance.max,
           priority: Priority.max,
           playSound: true,
           enableVibration: true,
           icon: '@mipmap/ic_launcher',
+          category: AndroidNotificationCategory.alarm,
         );
 
         // Cancel previous schedule for this stable ID before setting replacement
         await _notificationService.cancelNotification(med.id);
 
         if (Platform.isAndroid) {
-          await _notificationService.notificationsPlugin.zonedSchedule(
-            med.id,
-            title,
-            body,
-            tzScheduled,
-            NotificationDetails(android: androidDetails),
-            androidScheduleMode: canExact
-                ? AndroidScheduleMode.exactAllowWhileIdle
-                : AndroidScheduleMode.inexactAllowWhileIdle,
-            uiLocalNotificationDateInterpretation:
-                UILocalNotificationDateInterpretation.absoluteTime,
-            matchDateTimeComponents: intervalMinutes == 1440 ? DateTimeComponents.time : null,
-            payload: 'medicine:${med.id}',
-          );
+          if (intervalMinutes == 1) {
+            // Schedule repeating 1-minute burst for fast testing
+            for (int i = 1; i <= 5; i++) {
+              final burstId = med.id * 1000 + i;
+              await _notificationService.cancelNotification(burstId);
+              await _notificationService.notificationsPlugin.zonedSchedule(
+                burstId,
+                title,
+                body,
+                tzNow.add(Duration(minutes: i)),
+                NotificationDetails(android: androidDetails),
+                androidScheduleMode: canExact
+                    ? AndroidScheduleMode.exactAllowWhileIdle
+                    : AndroidScheduleMode.inexactAllowWhileIdle,
+                uiLocalNotificationDateInterpretation:
+                    UILocalNotificationDateInterpretation.absoluteTime,
+                payload: 'medicine:${med.id}',
+              );
+            }
+          } else {
+            await _notificationService.notificationsPlugin.zonedSchedule(
+              med.id,
+              title,
+              body,
+              tzScheduled,
+              NotificationDetails(android: androidDetails),
+              androidScheduleMode: canExact
+                  ? AndroidScheduleMode.exactAllowWhileIdle
+                  : AndroidScheduleMode.inexactAllowWhileIdle,
+              uiLocalNotificationDateInterpretation:
+                  UILocalNotificationDateInterpretation.absoluteTime,
+              matchDateTimeComponents: intervalMinutes == 1440 ? DateTimeComponents.time : null,
+              payload: 'medicine:${med.id}',
+            );
+          }
         }
 
         await db.updateMedicineScheduleInfo(
@@ -154,6 +177,28 @@ class ExpiryReminderScheduler {
         );
 
         scheduledCount++;
+      }
+
+      // If active expiring medicines exist, alert immediately so the user sees live feedback
+      if (scheduledCount > 0) {
+        int expCount = 0;
+        int soonCount = 0;
+        for (final m in medicines) {
+          if (m.isDeleted || m.isDraft || m.isReminderDisabled) continue;
+          if (m.expiryDate.isBefore(today)) {
+            expCount++;
+          } else {
+            final leadDays = m.reminderLeadDays ?? (m.reminderMonths != null ? m.reminderMonths! * 30 : globalDefaultMonths * 30);
+            final reminderStartDate = m.expiryDate.subtract(Duration(days: leadDays));
+            if (now.isAfter(reminderStartDate) || now.isAtSameMomentAs(reminderStartDate)) {
+              soonCount++;
+            }
+          }
+        }
+        await _notificationService.showExpirySummaryNotification(
+          expiredCount: expCount,
+          expiringCount: soonCount,
+        );
       }
 
       _activeRemindersCount = scheduledCount;

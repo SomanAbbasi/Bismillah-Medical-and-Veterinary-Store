@@ -42,6 +42,7 @@ class InventoryRepository {
   Future<int> addMedicine({
     required String name,
     required DateTime expiryDate,
+    String? batchNumber,
     String? genericName,
     String? brand,
     String? category,
@@ -54,6 +55,7 @@ class InventoryRepository {
     final id = await _db.insertMedicine(
       MedicinesCompanion(
         name: drift.Value(name),
+        batchNumber: drift.Value(batchNumber),
         expiryDate: drift.Value(expiryDate),
         genericName: drift.Value(genericName ?? ''),
         brand: drift.Value(brand ?? ''),
@@ -74,6 +76,7 @@ class InventoryRepository {
     required int id,
     required String name,
     required DateTime expiryDate,
+    String? batchNumber,
     String? genericName,
     String? brand,
     String? category,
@@ -87,6 +90,7 @@ class InventoryRepository {
       MedicinesCompanion(
         id: drift.Value(id),
         name: drift.Value(name),
+        batchNumber: drift.Value(batchNumber),
         expiryDate: drift.Value(expiryDate),
         genericName: drift.Value(genericName ?? ''),
         brand: drift.Value(brand ?? ''),

@@ -93,7 +93,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
               child: const Icon(Icons.lock, size: 40, color: AppColors.primary),
             ),
             const SizedBox(height: AppSpacing.lg),
-            const Text('PharmaLedger Locked', style: AppTypography.heading2),
+            const Text('BismillahStore Locked', style: AppTypography.heading2),
             const SizedBox(height: AppSpacing.xs),
             const Text('Enter your security PIN to unlock', style: AppTypography.bodyMedium),
             const SizedBox(height: AppSpacing.xl),

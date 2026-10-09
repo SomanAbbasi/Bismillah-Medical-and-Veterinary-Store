@@ -105,12 +105,24 @@ class CustomerRepository {
     return result;
   }
 
+  Future<Customer?> getCustomerById(int id) {
+    return _db.getCustomerById(id);
+  }
+
   Future<int> addCustomer(CustomersCompanion customer) {
     return _db.insertCustomer(customer);
   }
 
   Future<bool> updateCustomer(CustomersCompanion customer) {
     return _db.updateCustomer(customer);
+  }
+
+  Future<int> softDeleteCustomer(int id) {
+    return _db.softDeleteCustomer(id);
+  }
+
+  Future<int> restoreCustomer(int id) {
+    return _db.restoreCustomer(id);
   }
 
   Future<int> addCredit({

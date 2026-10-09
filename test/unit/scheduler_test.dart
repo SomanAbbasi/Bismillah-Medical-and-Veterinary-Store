@@ -84,21 +84,13 @@ void main() {
     });
 
     test('Disabling or soft deleting medicine flags cancellation of alerts', () {
-      bool isReminderDisabled = true;
-      bool isDeleted = false;
+      bool shouldCancelAlert({required bool isReminderDisabled, required bool isDeleted}) {
+        return isReminderDisabled || isDeleted;
+      }
 
-      bool shouldCancel = isReminderDisabled || isDeleted;
-      expect(shouldCancel, true);
-
-      isReminderDisabled = false;
-      isDeleted = true;
-      shouldCancel = isReminderDisabled || isDeleted;
-      expect(shouldCancel, true);
-
-      isReminderDisabled = false;
-      isDeleted = false;
-      shouldCancel = isReminderDisabled || isDeleted;
-      expect(shouldCancel, false);
+      expect(shouldCancelAlert(isReminderDisabled: true, isDeleted: false), true);
+      expect(shouldCancelAlert(isReminderDisabled: false, isDeleted: true), true);
+      expect(shouldCancelAlert(isReminderDisabled: false, isDeleted: false), false);
     });
   });
 }

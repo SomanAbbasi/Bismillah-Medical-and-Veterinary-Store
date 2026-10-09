@@ -138,11 +138,10 @@ class _AddSupplierScreenState extends ConsumerState<AddSupplierScreen> {
                     ),
                     const SizedBox(height: AppSpacing.md),
                     AppTextField(
-                      label: 'Contact Phone Number *',
+                      label: 'Contact Phone Number (Optional)',
                       hint: 'e.g. 0300-1234567',
                       keyboardType: TextInputType.phone,
                       controller: _phoneController,
-                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Phone number is required' : null,
                     ),
                     const SizedBox(height: AppSpacing.md),
                     AppTextField(

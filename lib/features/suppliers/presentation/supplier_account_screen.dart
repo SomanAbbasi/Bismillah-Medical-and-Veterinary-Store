@@ -24,7 +24,7 @@ class SupplierAccountScreen extends ConsumerStatefulWidget {
 }
 
 class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
-  String _shopName = 'PharmaLedger';
+  String _shopName = 'BismillahStore';
   DateTime? _startDate;
   DateTime? _endDate;
 
@@ -116,7 +116,7 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                 icon: const Icon(Icons.edit_outlined),
                 tooltip: 'Edit Supplier',
                 onPressed: () async {
-                  await context.push('/suppliers/new');
+                  await context.push('/suppliers/${supplier.id}/edit');
                   setState(() {});
                 },
               ),

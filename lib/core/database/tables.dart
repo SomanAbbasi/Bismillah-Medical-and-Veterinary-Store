@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 class Medicines extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
+  TextColumn get batchNumber => text().nullable()(); // Lot / Batch Number for multi-batch tracking
   TextColumn get genericName => text().withDefault(const Constant(''))();
   TextColumn get brand => text().withDefault(const Constant(''))();
   TextColumn get category => text().withDefault(const Constant('General'))();
@@ -27,7 +28,7 @@ class Medicines extends Table {
 class Customers extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
-  TextColumn get phone => text()();
+  TextColumn get phone => text().withDefault(const Constant(''))(); // Phone is optional
   TextColumn get alternativePhone => text().nullable()();
   TextColumn get address => text().nullable()();
   TextColumn get notes => text().nullable()();
@@ -55,7 +56,7 @@ class CustomerTransactions extends Table {
 class Suppliers extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
-  TextColumn get phone => text()();
+  TextColumn get phone => text().withDefault(const Constant(''))(); // Phone is optional
   TextColumn get company => text().nullable()();
   TextColumn get address => text().nullable()();
   TextColumn get notes => text().nullable()();

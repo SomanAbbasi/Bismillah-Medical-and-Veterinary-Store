@@ -22,11 +22,13 @@ class _AddEditMedicineScreenState extends ConsumerState<AddEditMedicineScreen> {
   final _formKey = GlobalKey<FormState>();
 
   final _nameController = TextEditingController();
+  final _batchController = TextEditingController();
+  final _formulaController = TextEditingController();
   final _brandController = TextEditingController();
-  final _categoryController = TextEditingController(text: 'General');
+  final _categoryController = TextEditingController(text: 'Tablets');
   final _notesController = TextEditingController();
 
-  DateTime _expiryDate = DateTime.now().add(const Duration(days: 180));
+  DateTime _expiryDate = DateTime.now(); // Default to current date as requested
   int? _customReminderMonths; // null = use global settings
   bool _isDraft = false;
   bool _isLoading = false;
@@ -45,8 +47,10 @@ class _AddEditMedicineScreenState extends ConsumerState<AddEditMedicineScreen> {
     if (med != null && mounted) {
       setState(() {
         _nameController.text = med.name;
+        _batchController.text = med.batchNumber ?? '';
+        _formulaController.text = med.genericName;
         _brandController.text = med.brand;
-        _categoryController.text = med.category;
+        _categoryController.text = med.category.isNotEmpty ? med.category : 'Tablets';
         _notesController.text = med.notes ?? '';
         _expiryDate = med.expiryDate;
         _customReminderMonths = med.reminderMonths;
@@ -58,6 +62,8 @@ class _AddEditMedicineScreenState extends ConsumerState<AddEditMedicineScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _batchController.dispose();
+    _formulaController.dispose();
     _brandController.dispose();
     _categoryController.dispose();
     _notesController.dispose();
@@ -75,6 +81,8 @@ class _AddEditMedicineScreenState extends ConsumerState<AddEditMedicineScreen> {
       if (widget.medicineId == null) {
         await repo.addMedicine(
           name: _nameController.text.trim(),
+          batchNumber: _batchController.text.trim().isEmpty ? null : _batchController.text.trim(),
+          genericName: _formulaController.text.trim().isEmpty ? null : _formulaController.text.trim(),
           expiryDate: _expiryDate,
           brand: _brandController.text.trim(),
           category: _categoryController.text.trim().isEmpty ? 'General' : _categoryController.text.trim(),
@@ -86,6 +94,8 @@ class _AddEditMedicineScreenState extends ConsumerState<AddEditMedicineScreen> {
         await repo.updateMedicine(
           id: widget.medicineId!,
           name: _nameController.text.trim(),
+          batchNumber: _batchController.text.trim().isEmpty ? null : _batchController.text.trim(),
+          genericName: _formulaController.text.trim().isEmpty ? null : _formulaController.text.trim(),
           expiryDate: _expiryDate,
           brand: _brandController.text.trim(),
           category: _categoryController.text.trim().isEmpty ? 'General' : _categoryController.text.trim(),
@@ -152,7 +162,7 @@ class _AddEditMedicineScreenState extends ConsumerState<AddEditMedicineScreen> {
 
                     AppTextField(
                       label: 'Medicine Name *',
-                      hint: 'e.g. Panadol 500mg, Augmentin 625mg',
+                      hint: 'e.g. Panadol, Augmentin, Flagyl',
                       controller: _nameController,
                       validator: (val) {
                         if (val == null || val.trim().isEmpty) {
@@ -163,8 +173,22 @@ class _AddEditMedicineScreenState extends ConsumerState<AddEditMedicineScreen> {
                     ),
                     const SizedBox(height: AppSpacing.md),
 
+                    AppTextField(
+                      label: 'Batch / Lot Number (Optional)',
+                      hint: 'e.g. B-101, Lot 24, New Stock Nov',
+                      controller: _batchController,
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+
+                    AppTextField(
+                      label: 'Formula / Generic Name (Optional)',
+                      hint: 'e.g. Paracetamol 500mg, Amoxicillin',
+                      controller: _formulaController,
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+
                     DateField(
-                      label: 'Expiry Date *',
+                      label: 'Expiry Date * (Default: Today)',
                       selectedDate: _expiryDate,
                       onDateSelected: (d) => setState(() => _expiryDate = d),
                     ),
@@ -172,15 +196,34 @@ class _AddEditMedicineScreenState extends ConsumerState<AddEditMedicineScreen> {
 
                     AppTextField(
                       label: 'Brand / Manufacturer (Optional)',
-                      hint: 'e.g. GSK, Pfizer, Getz',
+                      hint: 'e.g. GSK, Pfizer, Getz, Abbott',
                       controller: _brandController,
                     ),
                     const SizedBox(height: AppSpacing.md),
 
-                    AppTextField(
-                      label: 'Category (Optional)',
-                      hint: 'e.g. Antibiotics, Painkiller, Syrup',
-                      controller: _categoryController,
+                    Text('Medicine Type / Dosage Form', style: AppTypography.labelMedium.copyWith(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: AppSpacing.xs),
+                    DropdownButtonFormField<String>(
+                      initialValue: ['Tablets', 'Syrups', 'Capsules', 'Injections', 'Drops', 'Creams', 'Inhalers', 'Veterinary', 'General'].contains(_categoryController.text)
+                          ? _categoryController.text
+                          : 'Tablets',
+                      decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 12)),
+                      items: const [
+                        DropdownMenuItem(value: 'Tablets', child: Text('Tablets')),
+                        DropdownMenuItem(value: 'Syrups', child: Text('Syrup / Suspension')),
+                        DropdownMenuItem(value: 'Capsules', child: Text('Capsules')),
+                        DropdownMenuItem(value: 'Injections', child: Text('Injections / Ampoules')),
+                        DropdownMenuItem(value: 'Drops', child: Text('Drops (Eye / Ear / Nasal)')),
+                        DropdownMenuItem(value: 'Creams', child: Text('Creams / Ointments')),
+                        DropdownMenuItem(value: 'Inhalers', child: Text('Inhalers / Nebulizers')),
+                        DropdownMenuItem(value: 'Veterinary', child: Text('Veterinary Medicine')),
+                        DropdownMenuItem(value: 'General', child: Text('General / Other')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) {
+                          setState(() => _categoryController.text = v);
+                        }
+                      },
                     ),
                     const SizedBox(height: AppSpacing.md),
 

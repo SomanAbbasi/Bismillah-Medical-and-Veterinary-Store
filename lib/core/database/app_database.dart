@@ -20,7 +20,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? e]) : super(e ?? openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -28,10 +28,10 @@ class AppDatabase extends _$AppDatabase {
       await m.createAll();
     },
     onUpgrade: (Migrator m, int from, int to) async {
-      // Re-create all tables on upgrade
-      for (final table in allTables) {
-        await m.deleteTable(table.actualTableName);
-        await m.createTable(table);
+      if (from < 4) {
+        try {
+          await m.addColumn(medicines, medicines.batchNumber);
+        } catch (_) {}
       }
     },
   );

@@ -17,7 +17,7 @@ class WelcomeScreen extends ConsumerStatefulWidget {
 
 class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _shopNameController = TextEditingController(text: 'Arslan Medical Store');
+  final _shopNameController = TextEditingController(text: 'BismillahStore');
   final _ownerNameController = TextEditingController();
   final _phoneController = TextEditingController();
   String _selectedCurrency = 'PKR (Rs.)';
@@ -87,7 +87,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                   ),
                   const SizedBox(height: AppSpacing.lg),
                   const Text(
-                    'Welcome to PharmaLedger',
+                    'Welcome to BismillahStore',
                     style: AppTypography.heading1,
                   ),
                   const SizedBox(height: AppSpacing.xs),

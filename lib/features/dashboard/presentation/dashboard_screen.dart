@@ -12,6 +12,7 @@ import '../../../core/utils/date_formatter.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/widgets/metric_card.dart';
 import '../../../core/widgets/quick_action_sheet.dart';
+import '../../../core/permissions/permission_manager.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/status_chip.dart';
 import '../data/dashboard_provider.dart';
@@ -24,7 +25,7 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
-  String _shopName = 'PharmaLedger';
+  String _shopName = 'BismillahStore';
 
   @override
   void initState() {
@@ -33,6 +34,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final db = ref.read(databaseProvider);
       ref.read(expiryReminderSchedulerProvider).reconcile(db);
+      PermissionManager.checkAndPromptPermissions(context, ref);
     });
   }
 

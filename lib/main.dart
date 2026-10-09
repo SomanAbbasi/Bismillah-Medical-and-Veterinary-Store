@@ -31,19 +31,19 @@ void main() async {
 
   runApp(
     const ProviderScope(
-      child: PharmaLedgerApp(),
+      child: BismillahStoreApp(),
     ),
   );
 }
 
-class PharmaLedgerApp extends ConsumerStatefulWidget {
-  const PharmaLedgerApp({super.key});
+class BismillahStoreApp extends ConsumerStatefulWidget {
+  const BismillahStoreApp({super.key});
 
   @override
-  ConsumerState<PharmaLedgerApp> createState() => _PharmaLedgerAppState();
+  ConsumerState<BismillahStoreApp> createState() => _BismillahStoreAppState();
 }
 
-class _PharmaLedgerAppState extends ConsumerState<PharmaLedgerApp> with WidgetsBindingObserver {
+class _BismillahStoreAppState extends ConsumerState<BismillahStoreApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
@@ -79,7 +79,7 @@ class _PharmaLedgerAppState extends ConsumerState<PharmaLedgerApp> with WidgetsB
     final router = ref.watch(appRouterProvider);
 
     return MaterialApp.router(
-      title: 'PharmaLedger',
+      title: 'BismillahStore',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       routerConfig: router,

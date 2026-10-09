@@ -37,6 +37,13 @@ final dashboardSummaryProvider = FutureProvider<DashboardSummary>((ref) async {
   final todayStart = DateFormatter.today();
   final todayEnd = todayStart.add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1));
 
+  // Watch streams so dashboard automatically auto-refreshes whenever sales, expenses, or ledgers change
+  ref.watch(recentSalesStreamProvider);
+  ref.watch(expensesStreamProvider);
+  ref.watch(medicinesStreamProvider);
+  ref.watch(customersWithBalancesStreamProvider);
+  ref.watch(suppliersWithBalancesStreamProvider);
+
   final salesRepo = ref.watch(salesRepositoryProvider);
   final expenseRepo = ref.watch(expenseRepositoryProvider);
   final customerRepo = ref.watch(customerRepositoryProvider);

@@ -88,7 +88,7 @@ class AppLockService extends StateNotifier<AppLockState> {
   Future<bool> authenticateWithBiometrics() async {
     try {
       final authenticated = await _localAuth.authenticate(
-        localizedReason: 'Please authenticate to unlock PharmaLedger',
+        localizedReason: 'Please authenticate to unlock BismillahStore',
         options: const AuthenticationOptions(
           stickyAuth: true,
           biometricOnly: false,

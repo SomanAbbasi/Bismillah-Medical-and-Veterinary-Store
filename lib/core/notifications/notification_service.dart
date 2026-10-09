@@ -68,7 +68,7 @@ class NotificationService {
       await androidImplementation.createNotificationChannel(
         const AndroidNotificationChannel(
           expiryChannelId,
-          'PharmaLedger Expiry Alerts',
+          'BismillahStore Expiry Alerts',
           description: 'Timely system notifications for expiring and expired medicines',
           importance: Importance.max,
           playSound: true,
@@ -80,7 +80,7 @@ class NotificationService {
       await androidImplementation.createNotificationChannel(
         const AndroidNotificationChannel(
           backupChannelId,
-          'PharmaLedger Backup Reminders',
+          'BismillahStore Backup Reminders',
           description: 'Periodic reminders to export and secure store records',
           importance: Importance.defaultImportance,
           playSound: true,
@@ -133,7 +133,7 @@ class NotificationService {
 
     const androidDetails = AndroidNotificationDetails(
       expiryChannelId,
-      'PharmaLedger Expiry Alerts',
+      'BismillahStore Expiry Alerts',
       channelDescription: 'Timely notifications for expiring and expired medicines',
       importance: Importance.max,
       priority: Priority.max,
@@ -146,10 +146,50 @@ class NotificationService {
 
     await notificationsPlugin.show(
       7777,
-      '🔔 PharmaLedger Notification Test',
+      '🔔 BismillahStore Notification Test',
       'System sound and vibration alert is working properly with full audio!',
       notificationDetails,
       payload: 'test_alert',
+    );
+  }
+
+  /// Fires an instant status bar notification summarizing expiring or expired medicines
+  Future<void> showExpirySummaryNotification({
+    required int expiredCount,
+    required int expiringCount,
+  }) async {
+    await initialize();
+
+    String title;
+    String body;
+    if (expiredCount > 0 && expiringCount > 0) {
+      title = '🚨 Expiry Alert: $expiredCount Expired, $expiringCount Expiring Soon';
+      body = 'Immediate review required. Open BismillahStore to inspect shelf stock.';
+    } else if (expiredCount > 0) {
+      title = '🚨 Expired Medicine Alert ($expiredCount items)';
+      body = 'Medicines have reached expiry date. Remove from store shelves immediately.';
+    } else {
+      title = '⚠️ Near Expiry Warning ($expiringCount items)';
+      body = 'Medicines approaching expiry date. Prioritize sales and customer orders.';
+    }
+
+    const androidDetails = AndroidNotificationDetails(
+      expiryChannelId,
+      'BismillahStore Expiry Alerts',
+      channelDescription: 'Timely notifications for expiring and expired medicines',
+      importance: Importance.max,
+      priority: Priority.max,
+      playSound: true,
+      enableVibration: true,
+      icon: '@mipmap/ic_launcher',
+    );
+
+    await notificationsPlugin.show(
+      9999,
+      title,
+      body,
+      const NotificationDetails(android: androidDetails),
+      payload: 'expiry_summary',
     );
   }
 

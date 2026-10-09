@@ -22,7 +22,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  final _shopNameController = TextEditingController(text: 'PharmaLedger');
+  final _shopNameController = TextEditingController(text: 'BismillahStore');
   final _ownerNameController = TextEditingController();
   final _phoneController = TextEditingController();
 
@@ -263,6 +263,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         initialValue: _notificationIntervalMinutes,
                         decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 12)),
                         items: const [
+                          DropdownMenuItem(value: 1, child: Text('Every 1 Minute (Ultra Fast Test ⚡)')),
                           DropdownMenuItem(value: 15, child: Text('Every 15 Minutes (Rapid / Testing)')),
                           DropdownMenuItem(value: 30, child: Text('Every 30 Minutes')),
                           DropdownMenuItem(value: 60, child: Text('Every 1 Hour (60 Minutes)')),

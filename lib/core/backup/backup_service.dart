@@ -53,7 +53,7 @@ class BackupManifest {
       };
 
   factory BackupManifest.fromJson(Map<String, dynamic> json) => BackupManifest(
-        appName: json['appName'] as String? ?? 'PharmaLedger',
+        appName: json['appName'] as String? ?? 'BismillahStore',
         appVersion: json['appVersion'] as String? ?? '1.0.0',
         schemaVersion: json['schemaVersion'] as int? ?? 3,
         timestamp: json['timestamp'] as String? ?? '',
@@ -106,7 +106,7 @@ class BackupService {
     final now = DateTime.now();
     final timestampStr = DateFormat('yyyy-MM-dd_HH-mm').format(now);
     final manifest = BackupManifest(
-      appName: 'PharmaLedger',
+      appName: 'BismillahStore',
       appVersion: '1.0.0',
       schemaVersion: db.schemaVersion,
       timestamp: now.toIso8601String(),
@@ -159,7 +159,7 @@ class BackupService {
     final zipData = zipEncoder.encode(archive);
 
     final backupDir = await getBackupsDirectory();
-    final backupFileName = 'pharmaledger_backup_$timestampStr.zip';
+    final backupFileName = 'bismillahstore_backup_$timestampStr.zip';
     final backupFile = File(p.join(backupDir.path, backupFileName));
     await backupFile.writeAsBytes(zipData);
 
@@ -251,7 +251,7 @@ class BackupService {
     if (await backupFile.exists()) {
       await Share.shareXFiles(
         [XFile(backupFile.path)],
-        text: 'PharmaLedger Store Data Backup',
+        text: 'BismillahStore Data Backup',
       );
     }
   }

@@ -31,6 +31,17 @@ class $MedicinesTable extends Medicines
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _batchNumberMeta = const VerificationMeta(
+    'batchNumber',
+  );
+  @override
+  late final GeneratedColumn<String> batchNumber = GeneratedColumn<String>(
+    'batch_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _genericNameMeta = const VerificationMeta(
     'genericName',
   );
@@ -260,6 +271,7 @@ class $MedicinesTable extends Medicines
   List<GeneratedColumn> get $columns => [
     id,
     name,
+    batchNumber,
     genericName,
     brand,
     category,
@@ -302,6 +314,15 @@ class $MedicinesTable extends Medicines
       );
     } else if (isInserting) {
       context.missing(_nameMeta);
+    }
+    if (data.containsKey('batch_number')) {
+      context.handle(
+        _batchNumberMeta,
+        batchNumber.isAcceptableOrUnknown(
+          data['batch_number']!,
+          _batchNumberMeta,
+        ),
+      );
     }
     if (data.containsKey('generic_name')) {
       context.handle(
@@ -466,6 +487,10 @@ class $MedicinesTable extends Medicines
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
+      batchNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}batch_number'],
+      ),
       genericName: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}generic_name'],
@@ -554,6 +579,7 @@ class $MedicinesTable extends Medicines
 class Medicine extends DataClass implements Insertable<Medicine> {
   final int id;
   final String name;
+  final String? batchNumber;
   final String genericName;
   final String brand;
   final String category;
@@ -576,6 +602,7 @@ class Medicine extends DataClass implements Insertable<Medicine> {
   const Medicine({
     required this.id,
     required this.name,
+    this.batchNumber,
     required this.genericName,
     required this.brand,
     required this.category,
@@ -601,6 +628,9 @@ class Medicine extends DataClass implements Insertable<Medicine> {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['name'] = Variable<String>(name);
+    if (!nullToAbsent || batchNumber != null) {
+      map['batch_number'] = Variable<String>(batchNumber);
+    }
     map['generic_name'] = Variable<String>(genericName);
     map['brand'] = Variable<String>(brand);
     map['category'] = Variable<String>(category);
@@ -643,6 +673,9 @@ class Medicine extends DataClass implements Insertable<Medicine> {
     return MedicinesCompanion(
       id: Value(id),
       name: Value(name),
+      batchNumber: batchNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(batchNumber),
       genericName: Value(genericName),
       brand: Value(brand),
       category: Value(category),
@@ -689,6 +722,7 @@ class Medicine extends DataClass implements Insertable<Medicine> {
     return Medicine(
       id: serializer.fromJson<int>(json['id']),
       name: serializer.fromJson<String>(json['name']),
+      batchNumber: serializer.fromJson<String?>(json['batchNumber']),
       genericName: serializer.fromJson<String>(json['genericName']),
       brand: serializer.fromJson<String>(json['brand']),
       category: serializer.fromJson<String>(json['category']),
@@ -718,6 +752,7 @@ class Medicine extends DataClass implements Insertable<Medicine> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'name': serializer.toJson<String>(name),
+      'batchNumber': serializer.toJson<String?>(batchNumber),
       'genericName': serializer.toJson<String>(genericName),
       'brand': serializer.toJson<String>(brand),
       'category': serializer.toJson<String>(category),
@@ -745,6 +780,7 @@ class Medicine extends DataClass implements Insertable<Medicine> {
   Medicine copyWith({
     int? id,
     String? name,
+    Value<String?> batchNumber = const Value.absent(),
     String? genericName,
     String? brand,
     String? category,
@@ -767,6 +803,7 @@ class Medicine extends DataClass implements Insertable<Medicine> {
   }) => Medicine(
     id: id ?? this.id,
     name: name ?? this.name,
+    batchNumber: batchNumber.present ? batchNumber.value : this.batchNumber,
     genericName: genericName ?? this.genericName,
     brand: brand ?? this.brand,
     category: category ?? this.category,
@@ -803,6 +840,9 @@ class Medicine extends DataClass implements Insertable<Medicine> {
     return Medicine(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
+      batchNumber: data.batchNumber.present
+          ? data.batchNumber.value
+          : this.batchNumber,
       genericName: data.genericName.present
           ? data.genericName.value
           : this.genericName,
@@ -852,6 +892,7 @@ class Medicine extends DataClass implements Insertable<Medicine> {
     return (StringBuffer('Medicine(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('batchNumber: $batchNumber, ')
           ..write('genericName: $genericName, ')
           ..write('brand: $brand, ')
           ..write('category: $category, ')
@@ -879,6 +920,7 @@ class Medicine extends DataClass implements Insertable<Medicine> {
   int get hashCode => Object.hashAll([
     id,
     name,
+    batchNumber,
     genericName,
     brand,
     category,
@@ -905,6 +947,7 @@ class Medicine extends DataClass implements Insertable<Medicine> {
       (other is Medicine &&
           other.id == this.id &&
           other.name == this.name &&
+          other.batchNumber == this.batchNumber &&
           other.genericName == this.genericName &&
           other.brand == this.brand &&
           other.category == this.category &&
@@ -929,6 +972,7 @@ class Medicine extends DataClass implements Insertable<Medicine> {
 class MedicinesCompanion extends UpdateCompanion<Medicine> {
   final Value<int> id;
   final Value<String> name;
+  final Value<String?> batchNumber;
   final Value<String> genericName;
   final Value<String> brand;
   final Value<String> category;
@@ -951,6 +995,7 @@ class MedicinesCompanion extends UpdateCompanion<Medicine> {
   const MedicinesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
+    this.batchNumber = const Value.absent(),
     this.genericName = const Value.absent(),
     this.brand = const Value.absent(),
     this.category = const Value.absent(),
@@ -974,6 +1019,7 @@ class MedicinesCompanion extends UpdateCompanion<Medicine> {
   MedicinesCompanion.insert({
     this.id = const Value.absent(),
     required String name,
+    this.batchNumber = const Value.absent(),
     this.genericName = const Value.absent(),
     this.brand = const Value.absent(),
     this.category = const Value.absent(),
@@ -998,6 +1044,7 @@ class MedicinesCompanion extends UpdateCompanion<Medicine> {
   static Insertable<Medicine> custom({
     Expression<int>? id,
     Expression<String>? name,
+    Expression<String>? batchNumber,
     Expression<String>? genericName,
     Expression<String>? brand,
     Expression<String>? category,
@@ -1021,6 +1068,7 @@ class MedicinesCompanion extends UpdateCompanion<Medicine> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
+      if (batchNumber != null) 'batch_number': batchNumber,
       if (genericName != null) 'generic_name': genericName,
       if (brand != null) 'brand': brand,
       if (category != null) 'category': category,
@@ -1048,6 +1096,7 @@ class MedicinesCompanion extends UpdateCompanion<Medicine> {
   MedicinesCompanion copyWith({
     Value<int>? id,
     Value<String>? name,
+    Value<String?>? batchNumber,
     Value<String>? genericName,
     Value<String>? brand,
     Value<String>? category,
@@ -1071,6 +1120,7 @@ class MedicinesCompanion extends UpdateCompanion<Medicine> {
     return MedicinesCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
+      batchNumber: batchNumber ?? this.batchNumber,
       genericName: genericName ?? this.genericName,
       brand: brand ?? this.brand,
       category: category ?? this.category,
@@ -1102,6 +1152,9 @@ class MedicinesCompanion extends UpdateCompanion<Medicine> {
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
+    }
+    if (batchNumber.present) {
+      map['batch_number'] = Variable<String>(batchNumber.value);
     }
     if (genericName.present) {
       map['generic_name'] = Variable<String>(genericName.value);
@@ -1170,6 +1223,7 @@ class MedicinesCompanion extends UpdateCompanion<Medicine> {
     return (StringBuffer('MedicinesCompanion(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('batchNumber: $batchNumber, ')
           ..write('genericName: $genericName, ')
           ..write('brand: $brand, ')
           ..write('category: $category, ')
@@ -1229,7 +1283,8 @@ class $CustomersTable extends Customers
     aliasedName,
     false,
     type: DriftSqlType.string,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
   );
   static const VerificationMeta _alternativePhoneMeta = const VerificationMeta(
     'alternativePhone',
@@ -1352,8 +1407,6 @@ class $CustomersTable extends Customers
         _phoneMeta,
         phone.isAcceptableOrUnknown(data['phone']!, _phoneMeta),
       );
-    } else if (isInserting) {
-      context.missing(_phoneMeta);
     }
     if (data.containsKey('alternative_phone')) {
       context.handle(
@@ -1681,7 +1734,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
   CustomersCompanion.insert({
     this.id = const Value.absent(),
     required String name,
-    required String phone,
+    this.phone = const Value.absent(),
     this.alternativePhone = const Value.absent(),
     this.address = const Value.absent(),
     this.notes = const Value.absent(),
@@ -1689,8 +1742,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     this.createdAt = const Value.absent(),
     this.isDeleted = const Value.absent(),
     this.deletedAt = const Value.absent(),
-  }) : name = Value(name),
-       phone = Value(phone);
+  }) : name = Value(name);
   static Insertable<Customer> custom({
     Expression<int>? id,
     Expression<String>? name,
@@ -2551,7 +2603,8 @@ class $SuppliersTable extends Suppliers
     aliasedName,
     false,
     type: DriftSqlType.string,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
   );
   static const VerificationMeta _companyMeta = const VerificationMeta(
     'company',
@@ -2662,8 +2715,6 @@ class $SuppliersTable extends Suppliers
         _phoneMeta,
         phone.isAcceptableOrUnknown(data['phone']!, _phoneMeta),
       );
-    } else if (isInserting) {
-      context.missing(_phoneMeta);
     }
     if (data.containsKey('company')) {
       context.handle(
@@ -2956,15 +3007,14 @@ class SuppliersCompanion extends UpdateCompanion<Supplier> {
   SuppliersCompanion.insert({
     this.id = const Value.absent(),
     required String name,
-    required String phone,
+    this.phone = const Value.absent(),
     this.company = const Value.absent(),
     this.address = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.isDeleted = const Value.absent(),
     this.deletedAt = const Value.absent(),
-  }) : name = Value(name),
-       phone = Value(phone);
+  }) : name = Value(name);
   static Insertable<Supplier> custom({
     Expression<int>? id,
     Expression<String>? name,
@@ -6600,6 +6650,7 @@ typedef $$MedicinesTableCreateCompanionBuilder =
     MedicinesCompanion Function({
       Value<int> id,
       required String name,
+      Value<String?> batchNumber,
       Value<String> genericName,
       Value<String> brand,
       Value<String> category,
@@ -6624,6 +6675,7 @@ typedef $$MedicinesTableUpdateCompanionBuilder =
     MedicinesCompanion Function({
       Value<int> id,
       Value<String> name,
+      Value<String?> batchNumber,
       Value<String> genericName,
       Value<String> brand,
       Value<String> category,
@@ -6661,6 +6713,11 @@ class $$MedicinesTableFilterComposer
 
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get batchNumber => $composableBuilder(
+    column: $table.batchNumber,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6779,6 +6836,11 @@ class $$MedicinesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get batchNumber => $composableBuilder(
+    column: $table.batchNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get genericName => $composableBuilder(
     column: $table.genericName,
     builder: (column) => ColumnOrderings(column),
@@ -6890,6 +6952,11 @@ class $$MedicinesTableAnnotationComposer
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
 
+  GeneratedColumn<String> get batchNumber => $composableBuilder(
+    column: $table.batchNumber,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get genericName => $composableBuilder(
     column: $table.genericName,
     builder: (column) => column,
@@ -7000,6 +7067,7 @@ class $$MedicinesTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
+                Value<String?> batchNumber = const Value.absent(),
                 Value<String> genericName = const Value.absent(),
                 Value<String> brand = const Value.absent(),
                 Value<String> category = const Value.absent(),
@@ -7022,6 +7090,7 @@ class $$MedicinesTableTableManager
               }) => MedicinesCompanion(
                 id: id,
                 name: name,
+                batchNumber: batchNumber,
                 genericName: genericName,
                 brand: brand,
                 category: category,
@@ -7046,6 +7115,7 @@ class $$MedicinesTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 required String name,
+                Value<String?> batchNumber = const Value.absent(),
                 Value<String> genericName = const Value.absent(),
                 Value<String> brand = const Value.absent(),
                 Value<String> category = const Value.absent(),
@@ -7068,6 +7138,7 @@ class $$MedicinesTableTableManager
               }) => MedicinesCompanion.insert(
                 id: id,
                 name: name,
+                batchNumber: batchNumber,
                 genericName: genericName,
                 brand: brand,
                 category: category,
@@ -7123,7 +7194,7 @@ typedef $$CustomersTableCreateCompanionBuilder =
     CustomersCompanion Function({
       Value<int> id,
       required String name,
-      required String phone,
+      Value<String> phone,
       Value<String?> alternativePhone,
       Value<String?> address,
       Value<String?> notes,
@@ -7515,7 +7586,7 @@ class $$CustomersTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 required String name,
-                required String phone,
+                Value<String> phone = const Value.absent(),
                 Value<String?> alternativePhone = const Value.absent(),
                 Value<String?> address = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
@@ -8093,7 +8164,7 @@ typedef $$SuppliersTableCreateCompanionBuilder =
     SuppliersCompanion Function({
       Value<int> id,
       required String name,
-      required String phone,
+      Value<String> phone,
       Value<String?> company,
       Value<String?> address,
       Value<String?> notes,
@@ -8394,7 +8465,7 @@ class $$SuppliersTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 required String name,
-                required String phone,
+                Value<String> phone = const Value.absent(),
                 Value<String?> company = const Value.absent(),
                 Value<String?> address = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
