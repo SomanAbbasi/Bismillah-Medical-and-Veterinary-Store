@@ -1,0 +1,59 @@
+name: arslan_medical_store
+description: "PharmaLedger - Offline-First Medical Store Management Application"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # State Management & DI
+  flutter_riverpod: ^2.6.1
+
+  # Routing
+  go_router: ^14.8.1
+
+  # Database & Persistence (Drift SQLite)
+  drift: ^2.25.0
+  sqlite3_flutter_libs: ^0.5.28
+  path_provider: ^2.1.5
+  path: ^1.9.1
+
+  # Security & Authentication
+  local_auth: ^2.3.0
+  flutter_secure_storage: ^9.2.4
+
+  # Local Notifications & Scheduling
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.10.0
+
+  # Files, Camera & Sharing
+  image_picker: ^1.1.2
+  file_picker: ^8.1.7
+  share_plus: ^10.1.4
+  url_launcher: ^6.3.1
+  archive: ^4.0.2
+
+  # Visualization & Charts
+  fl_chart: ^0.70.2
+
+  # Utilities & Formatting
+  intl: ^0.20.2
+  uuid: ^4.5.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+  # Code generation for Drift
+  drift_dev: ^2.25.0
+  build_runner: ^2.4.15
+
+flutter:
+  uses-material-design: true
