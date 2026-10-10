@@ -68,6 +68,9 @@ class InventoryRepository {
       ),
     );
 
+    if (isDraft) {
+      await _scheduler?.cancelMedicineReminders(id);
+    }
     await _scheduler?.reconcile(_db, forceReschedule: true);
     return id;
   }
@@ -104,11 +107,15 @@ class InventoryRepository {
       ),
     );
 
+    if (isDraft) {
+      await _scheduler?.cancelMedicineReminders(id);
+    }
     await _scheduler?.reconcile(_db, forceReschedule: true);
     return res;
   }
 
   Future<int> softDeleteMedicine(int id) async {
+    await _scheduler?.cancelMedicineReminders(id);
     final res = await _db.softDeleteMedicine(id);
     await _scheduler?.reconcile(_db, forceReschedule: true);
     return res;
@@ -116,13 +123,16 @@ class InventoryRepository {
 
   Future<int> restoreMedicine(int id) async {
     final res = await _db.restoreMedicine(id);
-    await _scheduler?.reconcile(_db);
+    await _scheduler?.reconcile(_db, forceReschedule: true);
     return res;
   }
 
   Future<int> setReminderDisabled(int id, bool isDisabled) async {
+    if (isDisabled) {
+      await _scheduler?.cancelMedicineReminders(id);
+    }
     final res = await _db.setMedicineReminderStatus(id, isDisabled);
-    await _scheduler?.reconcile(_db);
+    await _scheduler?.reconcile(_db, forceReschedule: true);
     return res;
   }
 

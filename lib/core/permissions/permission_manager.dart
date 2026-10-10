@@ -27,7 +27,6 @@ class PermissionManager {
       final notifService = ref.read(notificationServiceProvider);
       // Trigger native Android system permission prompt
       await notifService.requestNotificationPermission();
-      await notifService.requestExactAlarmsPermission();
       // Reconcile and schedule immediately
       final scheduler = ref.read(expiryReminderSchedulerProvider);
       await scheduler.reconcile(db, forceReschedule: true);

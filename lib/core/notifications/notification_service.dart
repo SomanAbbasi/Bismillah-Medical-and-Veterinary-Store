@@ -416,6 +416,19 @@ class NotificationService {
     );
   }
 
+  /// Cancels all pending medicine alarms, preserving standalone test alarms if active
+  Future<void> cancelAllMedicineAlarms() async {
+    try {
+      final pending = await notificationsPlugin.pendingNotificationRequests();
+      for (final req in pending) {
+        if (req.id != scheduledTestNotificationId && req.id != immediateTestNotificationId) {
+          await notificationsPlugin.cancel(req.id);
+        }
+      }
+      await cancelNotification(expirySummaryNotificationId);
+    } catch (_) {}
+  }
+
   Future<void> cancelNotification(int id) async {
     try {
       await notificationsPlugin.cancel(id);

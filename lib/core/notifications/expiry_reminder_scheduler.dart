@@ -13,13 +13,17 @@ class ExpiryReminderScheduler {
   String? _lastError;
   int _activeRemindersCount = 0;
   DateTime? _nextExpectedNotification;
-  Timer? _foregroundTimer;
-
   ExpiryReminderScheduler(this._notificationService);
 
-  void dispose() {
-    _foregroundTimer?.cancel();
-    _foregroundTimer = null;
+  void dispose() {}
+
+  /// Robust cancellation helper for a single medicine
+  /// Cancels the canonical medicine notification ID and any burst IDs (id * 1000 + 1..20)
+  Future<void> cancelMedicineReminders(int medicineId) async {
+    await _notificationService.cancelNotification(medicineId);
+    for (int i = 1; i <= 20; i++) {
+      await _notificationService.cancelNotification(medicineId * 1000 + i);
+    }
   }
 
   DateTime? get lastReconciledAt => _lastReconciledAt;
@@ -61,6 +65,10 @@ class ExpiryReminderScheduler {
     try {
       await _notificationService.initialize();
 
+      if (forceReschedule) {
+        await _notificationService.cancelAllMedicineAlarms();
+      }
+
       // Read global settings
       final defaultMonthsStr = await db.getSetting('default_reminder_months');
       final globalDefaultMonths = defaultMonthsStr != null ? (int.tryParse(defaultMonthsStr) ?? 1) : 1;
@@ -70,7 +78,8 @@ class ExpiryReminderScheduler {
 
       final canExact = await _notificationService.canScheduleExactAlarms();
 
-      final medicines = await db.getAllMedicines();
+      // Retrieve all medicines including soft-deleted ones so we can clean up any scheduled alarms
+      final medicines = await db.getAllMedicines(includeDeleted: true);
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
 
@@ -79,12 +88,18 @@ class ExpiryReminderScheduler {
 
       for (final med in medicines) {
         if (med.isDeleted || med.isDraft) {
-          await _notificationService.cancelNotification(med.id);
+          await cancelMedicineReminders(med.id);
+          await db.updateMedicineScheduleInfo(
+            med.id,
+            lastScheduledAt: null,
+            nextScheduledAt: null,
+            notificationId: null,
+          );
           continue;
         }
 
         if (med.isReminderDisabled) {
-          await _notificationService.cancelNotification(med.id);
+          await cancelMedicineReminders(med.id);
           await db.updateMedicineScheduleInfo(
             med.id,
             lastScheduledAt: null,
@@ -103,7 +118,7 @@ class ExpiryReminderScheduler {
         final isEligible = isExpired || now.isAfter(reminderStartDate) || now.isAtSameMomentAs(reminderStartDate);
 
         if (!isEligible) {
-          await _notificationService.cancelNotification(med.id);
+          await cancelMedicineReminders(med.id);
           await db.updateMedicineScheduleInfo(
             med.id,
             lastScheduledAt: null,
@@ -176,8 +191,8 @@ class ExpiryReminderScheduler {
           icon: '@mipmap/ic_launcher',
         );
 
-        // Cancel previous schedule for this stable ID before setting replacement
-        await _notificationService.cancelNotification(med.id);
+        // Cancel previous schedule for this medicine before setting replacement
+        await cancelMedicineReminders(med.id);
 
         if (Platform.isAndroid) {
           final scheduleMode = canExact
@@ -185,10 +200,9 @@ class ExpiryReminderScheduler {
               : AndroidScheduleMode.inexactAllowWhileIdle;
 
           if (intervalMinutes <= 1) {
-            // Schedule repeating 1-minute bursts (for 1..10 minutes) for fast testing
-            for (int i = 1; i <= 10; i++) {
+            // Schedule repeating 1-minute bursts (for 1..5 minutes) for fast testing
+            for (int i = 1; i <= 5; i++) {
               final burstId = med.id * 1000 + i;
-              await _notificationService.cancelNotification(burstId);
               final fireTime = tzNow.add(Duration(minutes: i));
               try {
                 await _notificationService.notificationsPlugin.zonedSchedule(
@@ -255,65 +269,6 @@ class ExpiryReminderScheduler {
         );
 
         scheduledCount++;
-      }
-
-      // If active expiring medicines exist, alert immediately so the user sees live feedback
-      if (scheduledCount > 0) {
-        int expCount = 0;
-        int soonCount = 0;
-        for (final m in medicines) {
-          if (m.isDeleted || m.isDraft || m.isReminderDisabled) continue;
-          if (m.expiryDate.isBefore(today)) {
-            expCount++;
-          } else {
-            final leadDays = m.reminderLeadDays ??
-                (m.reminderMonths != null ? m.reminderMonths! * 30 : globalDefaultMonths * 30);
-            final reminderStartDate = m.expiryDate.subtract(Duration(days: leadDays));
-            if (now.isAfter(reminderStartDate) || now.isAtSameMomentAs(reminderStartDate)) {
-              soonCount++;
-            }
-          }
-        }
-        await _notificationService.showExpirySummaryNotification(
-          expiredCount: expCount,
-          expiringCount: soonCount,
-        );
-      }
-
-      // If fast 1-minute interval is configured and items are scheduled, keep in-app foreground timer ticking
-      if (globalIntervalMinutes <= 1 && scheduledCount > 0) {
-        _foregroundTimer?.cancel();
-        _foregroundTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
-          try {
-            final activeMeds = await db.getAllMedicines();
-            final currNow = DateTime.now();
-            final currToday = DateTime(currNow.year, currNow.month, currNow.day);
-            int expC = 0;
-            int soonC = 0;
-            for (final m in activeMeds) {
-              if (m.isDeleted || m.isDraft || m.isReminderDisabled) continue;
-              if (m.expiryDate.isBefore(currToday)) {
-                expC++;
-              } else {
-                final lDays = m.reminderLeadDays ??
-                    (m.reminderMonths != null ? m.reminderMonths! * 30 : globalDefaultMonths * 30);
-                final rStart = m.expiryDate.subtract(Duration(days: lDays));
-                if (currNow.isAfter(rStart) || currNow.isAtSameMomentAs(rStart)) {
-                  soonC++;
-                }
-              }
-            }
-            if (expC > 0 || soonC > 0) {
-              await _notificationService.showExpirySummaryNotification(
-                expiredCount: expC,
-                expiringCount: soonC,
-              );
-            }
-          } catch (_) {}
-        });
-      } else {
-        _foregroundTimer?.cancel();
-        _foregroundTimer = null;
       }
 
       _activeRemindersCount = scheduledCount;

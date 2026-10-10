@@ -105,6 +105,7 @@ class SaleDetailScreen extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('"${sale.title}" moved to Recycle Bin.'),
+          duration: const Duration(seconds: 2),
           action: SnackBarAction(
             label: 'Undo',
             textColor: Colors.white,

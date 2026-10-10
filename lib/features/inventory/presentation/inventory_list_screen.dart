@@ -117,6 +117,7 @@ class _InventoryListScreenState extends ConsumerState<InventoryListScreen> with 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('"${medicine.name}" moved to Recycle Bin.'),
+          duration: const Duration(seconds: 2),
           action: SnackBarAction(
             label: 'Undo',
             textColor: Colors.white,

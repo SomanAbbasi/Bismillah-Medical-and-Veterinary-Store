@@ -178,6 +178,7 @@ class TrashScreen extends ConsumerWidget {
 
     final db = ref.read(databaseProvider);
     if (item.entityType == 'medicine') {
+      await ref.read(expiryReminderSchedulerProvider).cancelMedicineReminders(item.id);
       await (db.delete(db.medicines)..where((tbl) => tbl.id.equals(item.id))).go();
     } else if (item.entityType == 'sale') {
       await (db.delete(db.sales)..where((tbl) => tbl.id.equals(item.id))).go();

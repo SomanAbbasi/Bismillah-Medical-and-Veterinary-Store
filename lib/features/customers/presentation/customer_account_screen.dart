@@ -739,6 +739,7 @@ class _CustomerAccountScreenState extends ConsumerState<CustomerAccountScreen> {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: const Text('Transaction moved to Recycle Bin.'),
+                                      duration: const Duration(seconds: 2),
                                       action: SnackBarAction(
                                         label: 'Undo',
                                         textColor: Colors.yellow,

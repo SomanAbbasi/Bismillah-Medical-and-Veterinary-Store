@@ -83,14 +83,28 @@ void main() {
       expect(notifId1, equals(42));
     });
 
-    test('Disabling or soft deleting medicine flags cancellation of alerts', () {
-      bool shouldCancelAlert({required bool isReminderDisabled, required bool isDeleted}) {
-        return isReminderDisabled || isDeleted;
+    test('Disabling, draft status, or soft deleting medicine flags cancellation of alerts', () {
+      bool shouldCancelAlert({
+        required bool isReminderDisabled,
+        required bool isDeleted,
+        required bool isDraft,
+      }) {
+        return isReminderDisabled || isDeleted || isDraft;
       }
 
-      expect(shouldCancelAlert(isReminderDisabled: true, isDeleted: false), true);
-      expect(shouldCancelAlert(isReminderDisabled: false, isDeleted: true), true);
-      expect(shouldCancelAlert(isReminderDisabled: false, isDeleted: false), false);
+      expect(shouldCancelAlert(isReminderDisabled: true, isDeleted: false, isDraft: false), true);
+      expect(shouldCancelAlert(isReminderDisabled: false, isDeleted: true, isDraft: false), true);
+      expect(shouldCancelAlert(isReminderDisabled: false, isDeleted: false, isDraft: true), true);
+      expect(shouldCancelAlert(isReminderDisabled: false, isDeleted: false, isDraft: false), false);
+    });
+
+    test('Burst IDs helper covers canonical ID and burst range', () {
+      const medId = 7;
+      final burstIds = [medId, for (int i = 1; i <= 20; i++) medId * 1000 + i];
+      expect(burstIds.first, equals(7));
+      expect(burstIds.contains(7001), true);
+      expect(burstIds.contains(7020), true);
+      expect(burstIds.length, equals(21));
     });
 
     test('Batch expiring in 5 days with 30-day lead time qualifies for reminder', () {
