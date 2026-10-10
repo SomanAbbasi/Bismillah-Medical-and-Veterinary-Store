@@ -5,7 +5,6 @@ import '../database/database_provider.dart';
 import '../../features/dashboard/presentation/dashboard_screen.dart';
 import '../../features/dashboard/presentation/global_search_screen.dart';
 import '../../features/expenses/presentation/add_expense_screen.dart';
-import '../../features/expenses/presentation/expenses_screen.dart';
 import '../../features/expiry/presentation/expiry_management_screen.dart';
 import '../../features/inventory/presentation/add_batch_screen.dart';
 import '../../features/inventory/presentation/add_edit_medicine_screen.dart';
@@ -20,10 +19,9 @@ import '../../features/customers/presentation/record_payment_screen.dart';
 import '../../features/main_navigation/presentation/main_scaffold.dart';
 import '../../features/notifications/presentation/notification_center_screen.dart';
 import '../../features/onboarding/presentation/welcome_screen.dart';
-import '../../features/reports/presentation/reports_screen.dart';
 import '../../features/sales/presentation/new_sale_screen.dart';
 import '../../features/sales/presentation/sale_detail_screen.dart';
-import '../../features/sales/presentation/sales_screen.dart';
+import '../../features/sales/presentation/sales_and_expenses_screen.dart';
 import '../../features/settings/presentation/backup_restore_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 import '../../features/suppliers/presentation/add_supplier_payable_screen.dart';
@@ -109,13 +107,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ],
           ),
 
-          // 3: Reports
+          // 3: Sales & Expenses
           StatefulShellBranch(
             navigatorKey: _shellNavigatorReportsKey,
             routes: [
               GoRoute(
-                path: '/reports',
-                builder: (context, state) => const ReportsScreen(),
+                path: '/sales-expenses',
+                builder: (context, state) {
+                  final tab = state.uri.queryParameters['tab'];
+                  return SalesAndExpensesScreen(initialTab: tab);
+                },
               ),
             ],
           ),
@@ -188,11 +189,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ExpiryManagementScreen(),
       ),
 
+      // Reports (redirected to unified Sales & Expenses)
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: '/reports',
+        redirect: (context, state) => '/sales-expenses',
+      ),
+
       // Sales
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: '/sales',
-        builder: (context, state) => const SalesScreen(),
+        redirect: (context, state) => '/sales-expenses?tab=sales',
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
@@ -222,7 +230,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: '/expenses',
-        builder: (context, state) => const ExpensesScreen(),
+        redirect: (context, state) => '/sales-expenses?tab=expenses',
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,

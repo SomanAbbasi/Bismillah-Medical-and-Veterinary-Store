@@ -35,9 +35,9 @@ class MainScaffold extends StatelessWidget {
             label: 'Ledger',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart_outlined),
-            activeIcon: Icon(Icons.bar_chart),
-            label: 'Reports',
+            icon: Icon(Icons.point_of_sale_outlined),
+            activeIcon: Icon(Icons.point_of_sale),
+            label: 'Sales & Expenses',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),

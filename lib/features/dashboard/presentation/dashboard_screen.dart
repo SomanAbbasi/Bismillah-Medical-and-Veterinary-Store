@@ -320,6 +320,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                         value: CurrencyFormatter.formatPaisa(summary.todaySalesPaisa),
                         icon: Icons.trending_up,
                         accentColor: AppColors.primary,
+                        onTap: () => context.go('/sales-expenses?tab=sales'),
                       ),
                     ),
                     const SizedBox(width: AppSpacing.md),
@@ -329,9 +330,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                         value: CurrencyFormatter.formatPaisa(summary.todayExpensesPaisa),
                         icon: Icons.trending_down,
                         accentColor: AppColors.warning,
+                        onTap: () => context.go('/sales-expenses?tab=expenses'),
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                MetricCard(
+                  title: "Today's Net Sales (Profit)",
+                  value: CurrencyFormatter.formatPaisa(summary.todayNetPaisa),
+                  subtitle: summary.todayNetPaisa >= 0
+                      ? "Sales exceed operational expenses today"
+                      : "Expenses exceeded sales today",
+                  icon: Icons.savings_outlined,
+                  accentColor: summary.todayNetPaisa >= 0 ? AppColors.success : AppColors.danger,
+                  onTap: () => context.go('/sales-expenses'),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 Row(
