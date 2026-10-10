@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/database/database_provider.dart';
 
+import '../../../core/notifications/notification_service.dart';
 import '../../../core/notifications/expiry_reminder_scheduler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -13,7 +14,6 @@ import '../../../core/utils/expiry_utils.dart';
 import '../../../core/widgets/metric_card.dart';
 import '../../../core/widgets/quick_action_sheet.dart';
 import '../../../core/permissions/permission_manager.dart';
-import '../../../core/permissions/notification_permission_onboarding.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/status_chip.dart';
 import '../data/dashboard_provider.dart';
@@ -165,20 +165,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                 if (_isNotificationDisabled) ...[
                   InkWell(
                     borderRadius: AppRadii.roundedMd,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          fullscreenDialog: true,
-                          builder: (ctx) => NotificationPermissionOnboardingScreen(
-                            onCompleted: () {
-                              Navigator.of(ctx).pop();
-                              _checkNotificationStatus();
-                              final db = ref.read(databaseProvider);
-                              ref.read(expiryReminderSchedulerProvider).reconcile(db);
-                            },
-                          ),
-                        ),
-                      );
+                    onTap: () async {
+                      final notifService = ref.read(notificationServiceProvider);
+                      await notifService.requestNotificationPermission();
+                      final granted = await notifService.areNotificationsEnabled();
+                      if (!granted) {
+                        await notifService.openNotificationSettings();
+                      }
+                      await _checkNotificationStatus();
+                      final db = ref.read(databaseProvider);
+                      await ref.read(expiryReminderSchedulerProvider).reconcile(db, forceReschedule: true);
                     },
                     child: Container(
                       padding: const EdgeInsets.all(12),

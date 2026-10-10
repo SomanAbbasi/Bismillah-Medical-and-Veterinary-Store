@@ -68,7 +68,7 @@ class InventoryRepository {
       ),
     );
 
-    await _scheduler?.reconcile(_db);
+    await _scheduler?.reconcile(_db, forceReschedule: true);
     return id;
   }
 
@@ -104,13 +104,13 @@ class InventoryRepository {
       ),
     );
 
-    await _scheduler?.reconcile(_db);
+    await _scheduler?.reconcile(_db, forceReschedule: true);
     return res;
   }
 
   Future<int> softDeleteMedicine(int id) async {
     final res = await _db.softDeleteMedicine(id);
-    await _scheduler?.reconcile(_db);
+    await _scheduler?.reconcile(_db, forceReschedule: true);
     return res;
   }
 

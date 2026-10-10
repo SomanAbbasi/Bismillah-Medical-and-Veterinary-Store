@@ -43,7 +43,7 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin notificationsPlugin = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
 
-  static const String expiryChannelId = 'bismillahstore_expiry_v4';
+  static const String expiryChannelId = 'bismillahstore_expiry_v5';
   static const String backupChannelId = 'bismillahstore_backup_v4';
   static const MethodChannel _settingsChannel = MethodChannel('com.bismillahstore/settings_channel');
 

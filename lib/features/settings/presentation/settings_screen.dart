@@ -198,7 +198,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             setState(() => _defaultReminderMonths = val);
                             final db = ref.read(databaseProvider);
                             await db.setSetting('default_reminder_months', val.toString());
-                            await ref.read(expiryReminderSchedulerProvider).reconcile(db);
+                            await ref.read(expiryReminderSchedulerProvider).reconcile(db, forceReschedule: true);
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
@@ -237,7 +237,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             setState(() => _notificationIntervalMinutes = val);
                             final db = ref.read(databaseProvider);
                             await db.setSetting('notification_interval_minutes', val.toString());
-                            await ref.read(expiryReminderSchedulerProvider).reconcile(db);
+                            await ref.read(expiryReminderSchedulerProvider).reconcile(db, forceReschedule: true);
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
@@ -252,11 +252,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                       const SizedBox(height: AppSpacing.md),
                       const Divider(),
+                      const SizedBox(height: AppSpacing.xs),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+                        icon: const Icon(Icons.notifications_active, color: AppColors.primary),
+                        label: const Text('Send Test Alert Now (Sound & Vibration)', style: TextStyle(fontWeight: FontWeight.w600)),
+                        onPressed: () async {
+                          final notif = ref.read(notificationServiceProvider);
+                          await notif.testImmediateNotification();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Immediate test alert sent with sound & vibration!'),
+                                backgroundColor: AppColors.success,
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: const Icon(Icons.analytics_outlined, color: AppColors.primary),
                         title: const Text('Notification Diagnostics', style: AppTypography.labelLarge),
-                        subtitle: const Text('View permission status, scheduled alarms & send test alert', style: AppTypography.bodySmall),
+                        subtitle: const Text('View permission status, pending alarms & detailed logs', style: AppTypography.bodySmall),
                         trailing: const Icon(Icons.arrow_forward_ios, size: 14),
                         onTap: () {
                           Navigator.of(context).push(

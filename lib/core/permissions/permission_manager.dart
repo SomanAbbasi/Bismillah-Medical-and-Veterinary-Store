@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../database/database_provider.dart';
 import '../notifications/notification_service.dart';
 import '../notifications/expiry_reminder_scheduler.dart';
-import 'notification_permission_onboarding.dart';
 
 class PermissionManager {
   static const String _keyOnboardingCompleted = 'notification_onboarding_completed';
@@ -16,29 +15,22 @@ class PermissionManager {
     return await notifService.areNotificationsEnabled();
   }
 
-  /// Checks and prompts the step-by-step onboarding flow if not yet completed or notifications disabled
+  /// Directly requests system notification and alarm permissions on first launch
   static Future<void> checkAndPromptPermissions(BuildContext context, WidgetRef ref) async {
     if (!Platform.isAndroid) return;
 
     final db = ref.read(databaseProvider);
     final onboardingDone = await db.getSetting(_keyOnboardingCompleted);
 
-    // Show onboarding on first launch until completed or dismissed
     if (onboardingDone != 'true') {
-      if (!context.mounted) return;
-
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (ctx) => NotificationPermissionOnboardingScreen(
-            onCompleted: () {
-              Navigator.of(ctx).pop();
-              final db = ref.read(databaseProvider);
-              ref.read(expiryReminderSchedulerProvider).reconcile(db);
-            },
-          ),
-        ),
-      );
+      await db.setSetting(_keyOnboardingCompleted, 'true');
+      final notifService = ref.read(notificationServiceProvider);
+      // Trigger native Android system permission prompt
+      await notifService.requestNotificationPermission();
+      await notifService.requestExactAlarmsPermission();
+      // Reconcile and schedule immediately
+      final scheduler = ref.read(expiryReminderSchedulerProvider);
+      await scheduler.reconcile(db, forceReschedule: true);
     }
   }
 }

@@ -428,15 +428,11 @@ class _NotificationDiagnosticsScreenState
                             'Device / OS Level',
                             '${_info!.deviceManufacturer} (API ${_info?.androidSdk ?? "Unknown"})',
                           ),
-                        if (_info?.lastError != null)
-                          _buildMetricRow(
-                            'Last Error',
-                            _info!.lastError!,
-                            isError: true,
-                          ),
                       ],
                     ),
                   ),
+                  if (_info?.lastError != null)
+                    _buildErrorCard(_info!.lastError!),
                   const SizedBox(height: AppSpacing.xl),
 
                   // Diagnostic Actions
@@ -571,6 +567,76 @@ class _NotificationDiagnosticsScreenState
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorCard(String rawError) {
+    String summary = rawError;
+    String details = '';
+    if (rawError.contains('TypeToken')) {
+      summary = 'R8 Generic Signature Error (TypeToken): Generic type signatures were stripped during shrinking.';
+      details = rawError;
+    } else if (rawError.contains('\n') || rawError.contains('at ')) {
+      final lines = rawError.split('\n');
+      summary = lines.first;
+      details = lines.skip(1).join('\n');
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: AppSpacing.md),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.danger.withValues(alpha: 0.08),
+        borderRadius: AppRadii.roundedMd,
+        border: Border.all(color: AppColors.danger.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.error_outline, color: AppColors.danger, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Diagnostic Error Detected',
+                  style: AppTypography.labelLarge.copyWith(color: AppColors.danger, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            summary,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+          ),
+          if (details.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: EdgeInsets.zero,
+                title: const Text('View Full Stack Trace', style: TextStyle(fontSize: 12, color: AppColors.danger, fontWeight: FontWeight.w600)),
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      borderRadius: AppRadii.roundedSm,
+                    ),
+                    child: SelectableText(
+                      details,
+                      style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: AppColors.textSecondary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
