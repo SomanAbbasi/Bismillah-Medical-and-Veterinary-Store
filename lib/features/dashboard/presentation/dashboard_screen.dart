@@ -28,6 +28,7 @@ class DashboardScreen extends ConsumerStatefulWidget {
 class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsBindingObserver {
   String _shopName = 'BismillahStore';
   bool _isNotificationDisabled = false;
+  bool _isBatteryOptimizationActive = false;
 
   @override
   void initState() {
@@ -59,8 +60,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
 
   Future<void> _checkNotificationStatus() async {
     final isGranted = await PermissionManager.areNotificationsGranted(ref);
+    final isBatteryExempt = await PermissionManager.isIgnoringBatteryOptimizations(ref);
     if (mounted) {
-      setState(() => _isNotificationDisabled = !isGranted);
+      setState(() {
+        _isNotificationDisabled = !isGranted;
+        _isBatteryOptimizationActive = !isBatteryExempt;
+      });
     }
   }
 
@@ -207,6 +212,51 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                             ),
                           ),
                           const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.danger),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                ],
+                if (!_isNotificationDisabled && _isBatteryOptimizationActive) ...[
+                  InkWell(
+                    borderRadius: AppRadii.roundedMd,
+                    onTap: () async {
+                      final notifService = ref.read(notificationServiceProvider);
+                      await notifService.openBatteryOptimizationSettings();
+                      await _checkNotificationStatus();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withValues(alpha: 0.1),
+                        borderRadius: AppRadii.roundedMd,
+                        border: Border.all(color: AppColors.warning.withValues(alpha: 0.5)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.battery_alert_outlined, color: AppColors.warning, size: 22),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Battery Optimization Restricting Alarms',
+                                  style: AppTypography.labelMedium.copyWith(
+                                    color: AppColors.warning,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                const Text(
+                                  'Tap here to allow Unrestricted background activity so reminders ring on time.',
+                                  style: TextStyle(color: AppColors.warning, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.warning),
                         ],
                       ),
                     ),

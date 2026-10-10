@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/backup/backup_service.dart';
 import '../../../core/database/database_provider.dart';
+import '../../../core/notifications/expiry_reminder_scheduler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
@@ -10,6 +11,12 @@ import '../../../core/utils/date_formatter.dart';
 import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/primary_button.dart';
 import '../../../core/widgets/secondary_button.dart';
+import '../../customers/data/customer_repository.dart';
+import '../../dashboard/data/dashboard_provider.dart';
+import '../../expenses/data/expense_repository.dart';
+import '../../inventory/data/inventory_repository.dart';
+import '../../sales/data/sales_repository.dart';
+import '../../suppliers/data/supplier_repository.dart';
 
 class BackupRestoreScreen extends ConsumerStatefulWidget {
   const BackupRestoreScreen({super.key});
@@ -114,10 +121,25 @@ class _BackupRestoreScreenState extends ConsumerState<BackupRestoreScreen> {
       final db = ref.read(databaseProvider);
       await backupService.restoreBackup(pickedFile, db);
 
+      // Invalidate Riverpod databaseProvider and all data stream providers
+      // so the entire application immediately reads from the restored SQLite database
+      ref.invalidate(databaseProvider);
+      ref.invalidate(customersWithBalancesStreamProvider);
+      ref.invalidate(suppliersWithBalancesStreamProvider);
+      ref.invalidate(medicinesStreamProvider);
+      ref.invalidate(recentSalesStreamProvider);
+      ref.invalidate(expensesStreamProvider);
+      ref.invalidate(dashboardSummaryProvider);
+
+      // Reconcile notifications with the newly restored database
+      final newDb = ref.read(databaseProvider);
+      await ref.read(expiryReminderSchedulerProvider).reconcile(newDb, forceReschedule: true);
+      await _loadLastBackup();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Database restored successfully! Data has been reloaded.'),
+            content: Text('Database and attachments restored successfully! All records reloaded.'),
             backgroundColor: AppColors.success,
           ),
         );

@@ -50,42 +50,46 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
     }
   }
 
-  void _shareStatement(SupplierWithBalance item, List<dynamic> txs) {
-    final buffer = StringBuffer();
-    buffer.writeln('====================================');
-    buffer.writeln('$_shopName - Supplier Statement');
-    buffer.writeln('====================================');
-    buffer.writeln('Supplier: ${item.supplier.name}');
-    buffer.writeln('Phone: ${item.supplier.phone}');
-    if (item.supplier.company != null && item.supplier.company!.isNotEmpty) {
-      buffer.writeln('Company: ${item.supplier.company}');
+  Future<void> _shareStatement(SupplierWithBalance item, List<SupplierTransactionWithRunningBalance> history) async {
+    final repo = ref.read(supplierRepositoryProvider);
+    final statement = repo.generateStatementText(
+      shopName: _shopName,
+      supplier: item.supplier,
+      history: history,
+      currentBalancePaisa: item.balancePaisa,
+    );
+
+    await Share.share(statement, subject: 'Supplier Statement - ${item.supplier.name}');
+  }
+
+  Future<void> _pickDateRange(BuildContext context) async {
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      initialDateRange: _startDate != null && _endDate != null
+          ? DateTimeRange(start: _startDate!, end: _endDate!)
+          : null,
+    );
+
+    if (range != null && mounted) {
+      setState(() {
+        _startDate = range.start;
+        _endDate = DateTime(range.end.year, range.end.month, range.end.day, 23, 59, 59);
+      });
     }
-    buffer.writeln('Date: ${DateFormatter.formatDate(DateTime.now())}');
-    buffer.writeln('------------------------------------');
-    buffer.writeln('TRANSACTIONS:');
+  }
 
-    for (final tx in txs) {
-      final dateStr = DateFormatter.formatShortDate(tx.date);
-      final isPayable = tx.type == 'payable';
-      final typeLabel = isPayable ? 'Bill (Owed)' : 'Payment';
-      final amount = CurrencyFormatter.formatPaisa(tx.amountPaisa);
-      buffer.writeln('$dateStr | $typeLabel | $amount | ${tx.reference ?? tx.note ?? ''}');
-    }
-
-    buffer.writeln('------------------------------------');
-    buffer.writeln('Total Bills: ${CurrencyFormatter.formatPaisa(item.totalPayablePaisa)}');
-    buffer.writeln('Total Paid: ${CurrencyFormatter.formatPaisa(item.totalPaidPaisa)}');
-    buffer.writeln('CURRENT BALANCE OWED: ${CurrencyFormatter.formatPaisa(item.balancePaisa)}');
-    buffer.writeln('====================================');
-
-    Share.share(buffer.toString(), subject: 'Supplier Statement - ${item.supplier.name}');
+  void _clearDateFilter() {
+    setState(() {
+      _startDate = null;
+      _endDate = null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final repo = ref.watch(supplierRepositoryProvider);
     final suppliersAsync = ref.watch(suppliersWithBalancesStreamProvider);
-    final txsAsync = ref.watch(supplierTransactionsStreamProvider(widget.supplierId));
 
     return suppliersAsync.when(
       loading: () => const Scaffold(
@@ -97,15 +101,11 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
       data: (suppliers) {
         final matching = suppliers.where((s) => s.supplier.id == widget.supplierId).toList();
         if (matching.isEmpty) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Supplier Details')),
-            body: const Center(child: Text('Supplier not found')),
-          );
+          return const Scaffold(body: Center(child: Text('Supplier not found')));
         }
-
-        final supplierWithBal = matching.first;
-        final supplier = supplierWithBal.supplier;
-        final owes = supplierWithBal.owesSupplier;
+        final item = matching.first;
+        final supplier = item.supplier;
+        final owes = item.owesSupplier;
 
         return Scaffold(
           backgroundColor: AppColors.background,
@@ -115,9 +115,9 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
               IconButton(
                 icon: const Icon(Icons.share_outlined),
                 tooltip: 'Share Statement',
-                onPressed: () {
-                  final txs = txsAsync.asData?.value ?? [];
-                  _shareStatement(supplierWithBal, txs);
+                onPressed: () async {
+                  final history = await ref.read(supplierRepositoryProvider).getTransactionsWithRunningBalance(supplier.id);
+                  _shareStatement(item, history);
                 },
               ),
               IconButton(
@@ -134,13 +134,20 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                   final confirmed = await ConfirmationDialog.show(
                     context: context,
                     title: 'Delete Supplier',
-                    message: 'Are you sure you want to move this supplier to trash? You can restore it later from Trash.',
+                    message: 'Are you sure you want to move "${supplier.name}" to Recycle Bin? All transactions will be preserved.',
                     isDestructive: true,
                     confirmLabel: 'Delete',
                   );
                   if (confirmed && context.mounted) {
-                    await repo.softDeleteSupplier(widget.supplierId);
+                    await ref.read(supplierRepositoryProvider).softDeleteSupplier(supplier.id);
                     if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Supplier "${supplier.name}" moved to Recycle Bin.'),
+                          backgroundColor: AppColors.danger,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
                       context.pop();
                     }
                   }
@@ -148,223 +155,277 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
               ),
             ],
           ),
-          body: Column(
-            children: [
-              // Supplier Summary Card
-              Container(
-                margin: const EdgeInsets.all(16),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: AppRadii.roundedLg,
-                  border: Border.all(
-                    color: owes ? AppColors.warning.withValues(alpha: 0.3) : AppColors.border,
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CircleAvatar(
-                          radius: 24,
-                          backgroundColor: owes ? AppColors.warningLight : AppColors.primarySubtle,
-                          foregroundColor: owes ? AppColors.warning : AppColors.primary,
-                          child: Text(
-                            supplier.name.isNotEmpty ? supplier.name[0].toUpperCase() : 'S',
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
-                          ),
+          body: Consumer(
+            builder: (context, ref, _) {
+              final txsAsync = ref.watch(supplierTransactionsStreamProvider(supplier.id));
+
+              return txsAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                error: (err, _) => Center(child: Text('Error: $err')),
+                data: (rawTxs) {
+                  // Filter by date range if selected
+                  final filtered = rawTxs.where((t) {
+                    if (_startDate != null && t.date.isBefore(_startDate!)) return false;
+                    if (_endDate != null && t.date.isAfter(_endDate!)) return false;
+                    return true;
+                  }).toList();
+
+                  // Sort chronological ascending to compute running balances correctly
+                  filtered.sort((a, b) => a.date.compareTo(b.date));
+                  int running = 0;
+                  final List<SupplierTransactionWithRunningBalance> history = [];
+                  for (final t in filtered) {
+                    if (t.type == 'payable') {
+                      running += t.amountPaisa;
+                    } else if (t.type == 'payment') {
+                      running -= t.amountPaisa;
+                    }
+                    history.add(SupplierTransactionWithRunningBalance(
+                      transaction: t,
+                      runningBalancePaisa: running,
+                    ));
+                  }
+
+                  return ListView(
+                    padding: AppSpacing.pagePadding,
+                    children: [
+                      // Profile & Balance Card (Identical layout to Customer Account)
+                      Container(
+                        padding: AppSpacing.cardPadding,
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: AppRadii.roundedLg,
+                          border: Border.all(color: AppColors.border),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(supplier.name, style: AppTypography.heading3),
-                              const SizedBox(height: 2),
-                              Text('Phone: ${supplier.phone}', style: AppTypography.bodySmall),
-                              if (supplier.company != null && supplier.company!.isNotEmpty)
-                                Text('Company: ${supplier.company}', style: AppTypography.bodySmall),
-                              if (supplier.address != null && supplier.address!.isNotEmpty)
-                                Text('Address: ${supplier.address}', style: AppTypography.bodySmall),
-                            ],
-                          ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              CurrencyFormatter.formatPaisa(supplierWithBal.balancePaisa),
-                              style: AppTypography.heading2.copyWith(
-                                color: owes ? AppColors.warning : AppColors.success,
-                                fontWeight: FontWeight.w800,
-                              ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(supplier.name, style: AppTypography.heading2),
+                                    const SizedBox(height: 2),
+                                    Text(supplier.phone, style: AppTypography.bodyMedium),
+                                    if (supplier.company != null && supplier.company!.isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(supplier.company!, style: AppTypography.bodySmall),
+                                    ],
+                                    if (supplier.address != null && supplier.address!.isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(supplier.address!, style: AppTypography.bodySmall),
+                                    ],
+                                  ],
+                                ),
+                                StatusChip(
+                                  label: owes ? 'Store Owes' : 'Cleared',
+                                  type: owes ? StatusType.warning : StatusType.success,
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 4),
-                            StatusChip(
-                              label: owes ? 'Store Owes' : 'Cleared',
-                              type: owes ? StatusType.warning : StatusType.success,
+                            const Divider(height: 24),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Current Balance', style: AppTypography.bodySmall),
+                                    Text(
+                                      CurrencyFormatter.formatPaisa(item.balancePaisa),
+                                      style: AppTypography.numberDisplay.copyWith(
+                                        color: owes ? AppColors.warning : AppColors.success,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Text(
+                                  owes ? 'Payable by Store' : 'Zero Balance',
+                                  style: AppTypography.bodySmall.copyWith(
+                                    color: owes ? AppColors.warning : AppColors.success,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: PrimaryButton(
-                            label: 'Add Bill (Payable)',
-                            icon: Icons.add,
-                            onPressed: () => context.push('/suppliers/${widget.supplierId}/payable'),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+
+                      // Quick Action Buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: PrimaryButton(
+                              label: 'Record Payment',
+                              icon: Icons.payments,
+                              backgroundColor: AppColors.success,
+                              onPressed: () => context.push('/suppliers/${supplier.id}/payment'),
+                            ),
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: PrimaryButton(
+                              label: 'Add Bill (Payable)',
+                              icon: Icons.receipt_long,
+                              backgroundColor: AppColors.danger,
+                              onPressed: () => context.push('/suppliers/${supplier.id}/payable'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      SecondaryButton(
+                        label: 'Share Account Statement (WhatsApp/SMS)',
+                        icon: Icons.share,
+                        onPressed: () => _shareStatement(item, history),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+
+                      // Date Filter Header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Ledger Transactions (${history.length})', style: AppTypography.heading3),
+                          Row(
+                            children: [
+                              if (_startDate != null) ...[
+                                TextButton(
+                                  onPressed: _clearDateFilter,
+                                  child: const Text('Clear Filter', style: TextStyle(color: AppColors.danger, fontSize: 12)),
+                                ),
+                              ],
+                              IconButton(
+                                icon: Icon(
+                                  _startDate != null ? Icons.filter_alt : Icons.filter_alt_outlined,
+                                  color: _startDate != null ? AppColors.primary : AppColors.textMuted,
+                                ),
+                                tooltip: 'Filter by Date Range',
+                                onPressed: () => _pickDateRange(context),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      if (_startDate != null && _endDate != null) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: Text(
+                            'Showing transactions from ${DateFormatter.formatDate(_startDate!)} to ${DateFormatter.formatDate(_endDate!)}',
+                            style: AppTypography.bodySmall.copyWith(color: AppColors.primary, fontWeight: FontWeight.w600),
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: SecondaryButton(
-                            label: 'Record Payment',
-                            icon: Icons.payments_outlined,
-                            onPressed: () => context.push('/suppliers/${widget.supplierId}/payment'),
-                          ),
-                        ),
                       ],
-                    ),
-                  ],
-                ),
-              ),
+                      const SizedBox(height: AppSpacing.xs),
 
-              // Ledger Transactions List Header
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Ledger Transactions', style: AppTypography.heading3),
-                    TextButton.icon(
-                      icon: const Icon(Icons.date_range, size: 16),
-                      label: Text(_startDate == null ? 'Filter Date' : 'Clear Filter'),
-                      onPressed: () async {
-                        if (_startDate != null) {
-                          setState(() {
-                            _startDate = null;
-                            _endDate = null;
-                          });
-                        } else {
-                          final range = await showDateRangePicker(
-                            context: context,
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime.now().add(const Duration(days: 365)),
-                          );
-                          if (range != null) {
-                            setState(() {
-                              _startDate = range.start;
-                              _endDate = range.end.add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1));
-                            });
-                          }
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-
-              // Transactions
-              Expanded(
-                child: txsAsync.when(
-                  loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                  error: (err, _) => Center(child: Text('Error: $err')),
-                  data: (txs) {
-                    var filtered = txs;
-                    if (_startDate != null && _endDate != null) {
-                      filtered = filtered.where((t) => t.date.isAfter(_startDate!) && t.date.isBefore(_endDate!)).toList();
-                    }
-
-                    if (filtered.isEmpty) {
-                      return const Center(
-                        child: Text('No transaction records found for this period.'),
-                      );
-                    }
-
-                    return ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, index) {
-                        final tx = filtered[index];
-                        final isPayable = tx.type == 'payable';
-
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
+                      if (history.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(28),
                           decoration: BoxDecoration(
                             color: AppColors.surface,
                             borderRadius: AppRadii.roundedMd,
                             border: Border.all(color: AppColors.border),
                           ),
-                          child: Material(
-                            color: Colors.transparent,
-                            borderRadius: AppRadii.roundedMd,
-                            child: InkWell(
+                          child: const Center(
+                            child: Text('No transactions recorded for this period.', style: AppTypography.bodyMedium),
+                          ),
+                        )
+                      else
+                        ...history.reversed.map((txItem) {
+                          final tx = txItem.transaction;
+                          final isPayable = tx.type == 'payable';
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
                               borderRadius: AppRadii.roundedMd,
-                              onTap: () => _showSupplierTransactionDetailModal(context, ref, tx, supplier),
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: isPayable ? AppColors.warningLight : AppColors.successLight,
-                                        borderRadius: AppRadii.roundedSm,
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              borderRadius: AppRadii.roundedMd,
+                              child: InkWell(
+                                borderRadius: AppRadii.roundedMd,
+                                onTap: () => _showSupplierTransactionDetailModal(context, ref, tx, supplier),
+                                child: Padding(
+                                  padding: AppSpacing.cardPadding,
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: isPayable ? AppColors.warningLight : AppColors.successLight,
+                                          borderRadius: AppRadii.roundedMd,
+                                        ),
+                                        child: Icon(
+                                          isPayable ? Icons.receipt_long : Icons.arrow_downward,
+                                          color: isPayable ? AppColors.warning : AppColors.success,
+                                          size: 18,
+                                        ),
                                       ),
-                                      child: Icon(
-                                        isPayable ? Icons.receipt_long : Icons.payments,
-                                        color: isPayable ? AppColors.warning : AppColors.success,
-                                        size: 20,
+                                      const SizedBox(width: AppSpacing.md),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              isPayable ? 'Bill (+)' : 'Payment (-)',
+                                              style: AppTypography.labelLarge.copyWith(
+                                                color: isPayable ? AppColors.warning : AppColors.success,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            Text(
+                                              '${DateFormatter.formatDate(tx.date)}${tx.paymentMethod != null ? " • ${tx.paymentMethod}" : (tx.reference != null ? " • ${tx.reference}" : "")}',
+                                              style: AppTypography.bodySmall,
+                                            ),
+                                            if (tx.note != null && tx.note!.isNotEmpty)
+                                              Text(
+                                                tx.note!,
+                                                style: AppTypography.bodySmall.copyWith(color: AppColors.textPrimary),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
                                         children: [
                                           Text(
-                                            isPayable ? 'Payable Bill (Owed)' : 'Payment Made',
-                                            style: AppTypography.labelLarge,
+                                            CurrencyFormatter.formatPaisa(tx.amountPaisa),
+                                            style: AppTypography.labelLarge.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                              color: isPayable ? AppColors.warning : AppColors.success,
+                                            ),
                                           ),
+                                          const SizedBox(height: 2),
                                           Text(
-                                            '${DateFormatter.formatDate(tx.date)}${tx.reference != null ? " • ${tx.reference}" : ""}',
-                                            style: AppTypography.bodySmall,
+                                            'Bal: ${CurrencyFormatter.formatPaisa(txItem.runningBalancePaisa)}',
+                                            style: AppTypography.bodySmall.copyWith(fontWeight: FontWeight.w600),
                                           ),
-                                          if (tx.note != null && tx.note!.isNotEmpty)
-                                            Text(tx.note!, style: AppTypography.bodySmall.copyWith(color: AppColors.textMuted)),
                                         ],
                                       ),
-                                    ),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.end,
-                                      children: [
-                                        Text(
-                                          CurrencyFormatter.formatPaisa(tx.amountPaisa),
-                                          style: AppTypography.labelLarge.copyWith(
-                                            color: isPayable ? AppColors.warning : AppColors.success,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(width: 4),
-                                    const Icon(Icons.chevron_right, size: 20, color: AppColors.textMuted),
-                                  ],
+                                      const SizedBox(width: 4),
+                                      const Icon(Icons.chevron_right, size: 20, color: AppColors.textMuted),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
+                          );
+                        }),
+
+                      const SizedBox(height: AppSpacing.huge),
+                    ],
+                  );
+                },
+              );
+            },
           ),
         );
       },
@@ -395,7 +456,7 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
               child: Container(
                 padding: const EdgeInsets.all(20),
                 constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                  maxHeight: MediaQuery.of(context).size.height * 0.88,
                 ),
                 child: SingleChildScrollView(
                   child: Column(
@@ -447,7 +508,7 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              isPayable ? 'Bill Amount (Owed)' : 'Payment Amount Paid',
+                              isPayable ? 'Bill Amount (Owed to Supplier)' : 'Payment Amount Paid',
                               style: AppTypography.bodySmall.copyWith(
                                 color: isPayable ? AppColors.warning : AppColors.success,
                                 fontWeight: FontWeight.bold,
@@ -469,8 +530,6 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                       // Information Grid
                       _buildInfoRow('Supplier', supplier.name),
                       _buildInfoRow('Date', DateFormatter.formatDateTime(tx.date)),
-                      if (tx.reference != null && tx.reference!.isNotEmpty)
-                        _buildInfoRow('Invoice / Bill #', tx.reference!),
                       if (tx.paymentMethod != null && tx.paymentMethod!.isNotEmpty)
                         _buildInfoRow(
                           'Payment Method',
@@ -478,14 +537,17 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                               ? '${tx.paymentMethod} (${tx.otherPaymentMethod})'
                               : tx.paymentMethod!,
                         ),
+                      if (tx.reference != null && tx.reference!.isNotEmpty)
+                        _buildInfoRow('Reference / Bill #', tx.reference!),
                       if (tx.note != null && tx.note!.isNotEmpty)
                         _buildInfoRow('Note / Remarks', tx.note!),
 
                       const Divider(height: 24),
 
                       // Attached Photo Proofs
-                      Text('Bill / Receipt Picture Proof', style: AppTypography.labelLarge),
+                      Text('Transaction Picture Proof', style: AppTypography.labelLarge),
                       const SizedBox(height: 8),
+
                       FutureBuilder<List<Attachment>>(
                         future: db.getAttachments('supplier_transaction', tx.id),
                         builder: (ctx, snap) {
@@ -504,7 +566,7 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                                 children: [
                                   const Icon(Icons.image_not_supported_outlined, color: AppColors.textMuted, size: 36),
                                   const SizedBox(height: 8),
-                                  const Text('No photo proof attached to this supplier record.', style: AppTypography.bodySmall),
+                                  const Text('No photo proof attached to this transaction.', style: AppTypography.bodySmall),
                                   const SizedBox(height: 12),
                                   OutlinedButton.icon(
                                     icon: const Icon(Icons.add_a_photo, size: 18),
@@ -578,12 +640,37 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                                           ClipRRect(
                                             borderRadius: AppRadii.roundedMd,
                                             child: InkWell(
-                                              onTap: () => _showFullScreenImage(context, file, 'Bill #${tx.id} Proof'),
+                                              onTap: () => _showFullScreenImage(context, file, 'Supplier Bill #${tx.id} Proof'),
                                               child: Image.file(
                                                 file,
                                                 width: double.infinity,
                                                 height: 180,
                                                 fit: BoxFit.cover,
+                                              ),
+                                            ),
+                                          ),
+                                          Positioned(
+                                            top: 8,
+                                            right: 52,
+                                            child: CircleAvatar(
+                                              backgroundColor: Colors.black54,
+                                              radius: 18,
+                                              child: IconButton(
+                                                icon: const Icon(Icons.delete_outline, color: Colors.white, size: 18),
+                                                tooltip: 'Delete Photo',
+                                                onPressed: () async {
+                                                  final confirmed = await ConfirmationDialog.show(
+                                                    context: context,
+                                                    title: 'Delete Photo Proof',
+                                                    message: 'Are you sure you want to remove this attached photo?',
+                                                    isDestructive: true,
+                                                    confirmLabel: 'Delete',
+                                                  );
+                                                  if (confirmed) {
+                                                    await db.deleteAttachment(att.id);
+                                                    setModalState(() {});
+                                                  }
+                                                },
                                               ),
                                             ),
                                           ),
@@ -595,7 +682,7 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                                               radius: 18,
                                               child: IconButton(
                                                 icon: const Icon(Icons.fullscreen, color: Colors.white, size: 18),
-                                                onPressed: () => _showFullScreenImage(context, file, 'Bill #${tx.id} Proof'),
+                                                onPressed: () => _showFullScreenImage(context, file, 'Supplier Bill #${tx.id} Proof'),
                                               ),
                                             ),
                                           ),
@@ -669,7 +756,7 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                               final confirmed = await ConfirmationDialog.show(
                                 context: context,
                                 title: 'Delete Transaction?',
-                                message: 'Move this transaction of ${CurrencyFormatter.formatPaisa(tx.amountPaisa)} to Trash?',
+                                message: 'Move this transaction of ${CurrencyFormatter.formatPaisa(tx.amountPaisa)} to Recycle Bin?',
                                 isDestructive: true,
                                 confirmLabel: 'Move to Trash',
                               );
@@ -680,8 +767,16 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                                 await repo.softDeleteTransaction(tx.id);
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Transaction moved to Recycle Bin.'),
+                                    SnackBar(
+                                      content: const Text('Transaction moved to Recycle Bin.'),
+                                      duration: const Duration(seconds: 2),
+                                      action: SnackBarAction(
+                                        label: 'Undo',
+                                        textColor: Colors.yellow,
+                                        onPressed: () async {
+                                          await repo.restoreTransaction(tx.id);
+                                        },
+                                      ),
                                     ),
                                   );
                                 }
@@ -887,4 +982,3 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
     );
   }
 }
-

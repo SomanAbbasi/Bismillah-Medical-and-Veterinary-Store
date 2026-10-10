@@ -1,7 +1,11 @@
+import 'dart:io';
+import 'package:drift/drift.dart' as drift;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
+import '../../../core/files/attachment_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
@@ -24,11 +28,14 @@ class AddSupplierPayableScreen extends ConsumerStatefulWidget {
 
 class _AddSupplierPayableScreenState extends ConsumerState<AddSupplierPayableScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _referenceController = TextEditingController();
+  final _noteController = TextEditingController();
+  final _attachmentService = AttachmentService();
+
   int? _selectedSupplierId;
   DateTime _date = DateTime.now();
   int _amountPaisa = 0;
-  final _referenceController = TextEditingController();
-  final _noteController = TextEditingController();
+  AttachmentResult? _attachedProof;
   bool _isLoading = false;
 
   @override
@@ -42,6 +49,24 @@ class _AddSupplierPayableScreenState extends ConsumerState<AddSupplierPayableScr
     _referenceController.dispose();
     _noteController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickProof(bool fromCamera) async {
+    try {
+      final result = fromCamera
+          ? await _attachmentService.capturePhoto()
+          : await _attachmentService.pickImageFromGallery();
+
+      if (result != null && mounted) {
+        setState(() => _attachedProof = result);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to attach photo: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _save() async {
@@ -68,7 +93,7 @@ class _AddSupplierPayableScreenState extends ConsumerState<AddSupplierPayableScr
       final shopName = await db.getSetting('shop_name') ?? 'Bismillah Medical & Veterinary Store';
       final supplier = await db.getSupplierById(_selectedSupplierId!);
 
-      await repo.addTransaction(
+      final txId = await repo.addTransaction(
         supplierId: _selectedSupplierId!,
         date: _date,
         amountPaisa: _amountPaisa,
@@ -76,6 +101,19 @@ class _AddSupplierPayableScreenState extends ConsumerState<AddSupplierPayableScr
         reference: _referenceController.text.trim().isEmpty ? null : _referenceController.text.trim(),
         note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
       );
+
+      if (_attachedProof != null) {
+        await db.insertAttachment(
+          AttachmentsCompanion(
+            entityType: const drift.Value('supplier_transaction'),
+            entityId: drift.Value(txId),
+            filePath: drift.Value(_attachedProof!.relativePath),
+            fileName: drift.Value(_attachedProof!.originalName),
+            mimeType: drift.Value(_attachedProof!.mimeType),
+            description: const drift.Value('Supplier bill photo proof'),
+          ),
+        );
+      }
 
       if (mounted && supplier != null) {
         final receipt = ReceiptShareHelper.buildSupplierReceipt(
@@ -195,6 +233,74 @@ class _AddSupplierPayableScreenState extends ConsumerState<AddSupplierPayableScr
                       controller: _noteController,
                       maxLines: 2,
                     ),
+                    const SizedBox(height: AppSpacing.md),
+
+                    // Bill / Invoice Photo Proof
+                    Text('Bill / Receipt Photo Proof', style: AppTypography.labelMedium.copyWith(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: AppSpacing.xs),
+                    if (_attachedProof != null) ...[
+                      FutureBuilder<String>(
+                        future: _attachmentService.getAbsolutePath(_attachedProof!.relativePath),
+                        builder: (context, snap) {
+                          return Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceVariant,
+                              borderRadius: AppRadii.roundedMd,
+                            ),
+                            child: Row(
+                              children: [
+                                if (snap.hasData && File(snap.data!).existsSync())
+                                  ClipRRect(
+                                    borderRadius: AppRadii.roundedSm,
+                                    child: Image.file(
+                                      File(snap.data!),
+                                      width: 44,
+                                      height: 44,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  )
+                                else
+                                  const Icon(Icons.receipt_long, color: AppColors.primary),
+                                const SizedBox(width: AppSpacing.md),
+                                Expanded(
+                                  child: Text(
+                                    _attachedProof!.originalName,
+                                    style: AppTypography.bodyMedium,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.close, size: 18),
+                                  onPressed: () => setState(() => _attachedProof = null),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ] else ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _pickProof(true),
+                              icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                              label: const Text('Camera'),
+                            ),
+                          ),
+                          const SizedBox(width: AppSpacing.md),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _pickProof(false),
+                              icon: const Icon(Icons.photo_library_outlined, size: 18),
+                              label: const Text('Gallery'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),

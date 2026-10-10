@@ -273,6 +273,16 @@ class BackupService {
       await createBackup(currentDb);
     } catch (_) {}
 
+    // 1. Force WAL checkpoint to flush all pending operations to disk
+    try {
+      await currentDb.customStatement('PRAGMA wal_checkpoint(TRUNCATE);');
+    } catch (_) {}
+
+    // 2. Safely close current database connection so all file locks are released
+    try {
+      await currentDb.close();
+    } catch (_) {}
+
     final bytes = await backupFile.readAsBytes();
     final archive = ZipDecoder().decodeBytes(bytes);
 
@@ -282,12 +292,31 @@ class BackupService {
     }
 
     final targetDbFile = await getDatabaseFile();
-    await targetDbFile.writeAsBytes(dbArchiveFile.content as List<int>);
+    final dbFolder = targetDbFile.parent;
 
+    // 3. Remove existing WAL & SHM files so SQLite doesn't replay obsolete WAL journal records
+    for (final name in [
+      'bismillahstore.sqlite-wal',
+      'bismillahstore.sqlite-shm',
+      'pharmaledger.sqlite-wal',
+      'pharmaledger.sqlite-shm'
+    ]) {
+      final f = File(p.join(dbFolder.path, name));
+      if (await f.exists()) {
+        try {
+          await f.delete();
+        } catch (_) {}
+      }
+    }
+
+    // 4. Overwrite primary SQLite database file
+    final primaryDbFile = File(p.join(dbFolder.path, 'bismillahstore.sqlite'));
+    await primaryDbFile.writeAsBytes(dbArchiveFile.content as List<int>);
+
+    // 5. Restore all image and document attachments to managed folder
     final attachDir = await _attachmentService.getAttachmentsDirectory();
     for (final file in archive) {
-      if (file.name.startsWith('attachments/') && !file.isFile) continue;
-      if (file.name.startsWith('attachments/')) {
+      if (file.name.startsWith('attachments/') && file.isFile) {
         final fileName = p.basename(file.name);
         if (fileName.isNotEmpty) {
           final targetFile = File(p.join(attachDir.path, fileName));

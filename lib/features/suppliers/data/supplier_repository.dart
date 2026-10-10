@@ -2,6 +2,18 @@ import 'package:drift/drift.dart' as drift;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
+import '../../../core/utils/currency_formatter.dart';
+import '../../../core/utils/date_formatter.dart';
+
+class SupplierTransactionWithRunningBalance {
+  final SupplierTransaction transaction;
+  final int runningBalancePaisa;
+
+  SupplierTransactionWithRunningBalance({
+    required this.transaction,
+    required this.runningBalancePaisa,
+  });
+}
 
 class SupplierWithBalance {
   final Supplier supplier;
@@ -223,6 +235,85 @@ class SupplierRepository {
 
   Future<int> softDeleteTransaction(int id) {
     return _db.softDeleteSupplierTransaction(id);
+  }
+
+  Future<int> restoreTransaction(int id) {
+    return _db.restoreSupplierTransaction(id);
+  }
+
+  Future<List<SupplierTransactionWithRunningBalance>> getTransactionsWithRunningBalance(
+    int supplierId, {
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    var txs = await _db.getSupplierTransactions(supplierId);
+    if (startDate != null) {
+      txs = txs.where((t) => !t.date.isBefore(startDate)).toList();
+    }
+    if (endDate != null) {
+      txs = txs.where((t) => !t.date.isAfter(endDate)).toList();
+    }
+
+    final List<SupplierTransactionWithRunningBalance> result = [];
+    int running = 0;
+
+    for (final tx in txs) {
+      if (tx.type == 'payable') {
+        running += tx.amountPaisa;
+      } else if (tx.type == 'payment') {
+        running -= tx.amountPaisa;
+      }
+      result.add(SupplierTransactionWithRunningBalance(
+        transaction: tx,
+        runningBalancePaisa: running,
+      ));
+    }
+
+    return result;
+  }
+
+  String generateStatementText({
+    required String shopName,
+    required Supplier supplier,
+    required List<SupplierTransactionWithRunningBalance> history,
+    required int currentBalancePaisa,
+  }) {
+    final buffer = StringBuffer();
+    buffer.writeln('===================================');
+    buffer.writeln(shopName);
+    buffer.writeln('SUPPLIER ACCOUNT STATEMENT');
+    buffer.writeln('===================================');
+    buffer.writeln('Supplier: ${supplier.name}');
+    if (supplier.phone.isNotEmpty) buffer.writeln('Phone: ${supplier.phone}');
+    if (supplier.company != null && supplier.company!.isNotEmpty) {
+      buffer.writeln('Company: ${supplier.company}');
+    }
+    buffer.writeln('Date: ${DateFormatter.formatDate(DateTime.now())}');
+    buffer.writeln('-----------------------------------');
+    buffer.writeln('Date       | Type    | Amount   | Balance');
+    buffer.writeln('-----------------------------------');
+
+    for (final item in history) {
+      final t = item.transaction;
+      final dateStr = DateFormatter.formatShortDate(t.date);
+      final isPayable = t.type == 'payable';
+      final typeStr = isPayable ? 'Bill(+)' : 'Paid(-)';
+      final amtStr = CurrencyFormatter.formatPaisa(t.amountPaisa);
+      final balStr = CurrencyFormatter.formatPaisa(item.runningBalancePaisa);
+      buffer.writeln('$dateStr | $typeStr | $amtStr | $balStr');
+      if (t.reference != null && t.reference!.isNotEmpty) {
+        buffer.writeln('   Ref: ${t.reference}');
+      }
+      if (t.note != null && t.note!.isNotEmpty) {
+        buffer.writeln('   Note: ${t.note}');
+      }
+    }
+
+    buffer.writeln('-----------------------------------');
+    buffer.writeln('Current Balance: ${CurrencyFormatter.formatPaisa(currentBalancePaisa)}');
+    buffer.writeln('-----------------------------------');
+    buffer.writeln('Thank you!');
+    return buffer.toString();
   }
 }
 

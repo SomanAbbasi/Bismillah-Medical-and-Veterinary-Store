@@ -199,11 +199,13 @@ class ExpiryReminderScheduler {
               ? AndroidScheduleMode.exactAllowWhileIdle
               : AndroidScheduleMode.inexactAllowWhileIdle;
 
-          if (intervalMinutes <= 1) {
-            // Schedule repeating 1-minute bursts (for 1..5 minutes) for fast testing
-            for (int i = 1; i <= 5; i++) {
+          if (intervalMinutes < 1440) {
+            // Sub-daily intervals (e.g. 1 min test, 15 min, 30 min, 60 min, etc.)
+            // Schedule up to 8 occurrences ahead (or 5 for 1-minute testing)
+            final burstCount = intervalMinutes <= 1 ? 5 : 8;
+            for (int i = 1; i <= burstCount; i++) {
               final burstId = med.id * 1000 + i;
-              final fireTime = tzNow.add(Duration(minutes: i));
+              final fireTime = tzNow.add(Duration(minutes: intervalMinutes * i));
               try {
                 await _notificationService.notificationsPlugin.zonedSchedule(
                   burstId,
@@ -231,6 +233,7 @@ class ExpiryReminderScheduler {
               }
             }
           } else {
+            // Daily or multi-day recurrence
             try {
               await _notificationService.notificationsPlugin.zonedSchedule(
                 med.id,

@@ -15,6 +15,13 @@ class PermissionManager {
     return await notifService.areNotificationsEnabled();
   }
 
+  /// Check whether battery optimization is ignored (unrestricted)
+  static Future<bool> isIgnoringBatteryOptimizations(WidgetRef ref) async {
+    if (!Platform.isAndroid) return true;
+    final notifService = ref.read(notificationServiceProvider);
+    return await notifService.isIgnoringBatteryOptimizations();
+  }
+
   /// Directly requests system notification and alarm permissions on first launch
   static Future<void> checkAndPromptPermissions(BuildContext context, WidgetRef ref) async {
     if (!Platform.isAndroid) return;
@@ -25,9 +32,14 @@ class PermissionManager {
     if (onboardingDone != 'true') {
       await db.setSetting(_keyOnboardingCompleted, 'true');
       final notifService = ref.read(notificationServiceProvider);
-      // Trigger native Android system permission prompt
+      // 1. Trigger native Android system permission prompt
       await notifService.requestNotificationPermission();
-      // Reconcile and schedule immediately
+      // 2. Prompt battery optimization exemption if not already exempt
+      final isExempt = await notifService.isIgnoringBatteryOptimizations();
+      if (!isExempt) {
+        await notifService.openBatteryOptimizationSettings();
+      }
+      // 3. Reconcile and schedule immediately
       final scheduler = ref.read(expiryReminderSchedulerProvider);
       await scheduler.reconcile(db, forceReschedule: true);
     }
