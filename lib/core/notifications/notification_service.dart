@@ -87,55 +87,48 @@ class NotificationService {
       }
     }
 
-    // 2. Initialize local notifications with drawable icon resource
-    // 'ic_notification' is located in android/app/src/main/res/drawable
-    const androidSettings = AndroidInitializationSettings('ic_notification');
-    const initSettings = InitializationSettings(android: androidSettings);
-
     try {
+      // 2. Initialize local notifications with standard launcher icon
+      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const initSettings = InitializationSettings(android: androidSettings);
+
       await notificationsPlugin.initialize(
         initSettings,
-        onDidReceiveNotificationResponse: (response) {
-          // Response handling
-        },
+        onDidReceiveNotificationResponse: (response) {},
       );
+
+      // 3. Create high-importance notification channels
+      final androidImplementation = notificationsPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+
+      if (androidImplementation != null) {
+        await androidImplementation.createNotificationChannel(
+          const AndroidNotificationChannel(
+            expiryChannelId,
+            'BismillahStore Expiry Alerts',
+            description: 'Audible high-priority alerts for expiring and expired medicines',
+            importance: Importance.max,
+            playSound: true,
+            enableVibration: true,
+            showBadge: true,
+          ),
+        );
+
+        await androidImplementation.createNotificationChannel(
+          const AndroidNotificationChannel(
+            backupChannelId,
+            'BismillahStore Backup Reminders',
+            description: 'Periodic reminders to export and secure store records',
+            importance: Importance.defaultImportance,
+            playSound: true,
+          ),
+        );
+      }
     } catch (_) {
-      // Fallback with standard launcher icon name
-      const fallbackSettings = InitializationSettings(
-        android: AndroidInitializationSettings('ic_launcher'),
-      );
-      await notificationsPlugin.initialize(fallbackSettings);
+      // Never let notification channel or plugin failures crash the app
+    } finally {
+      _initialized = true;
     }
-
-    // 3. Create high-importance notification channels
-    final androidImplementation = notificationsPlugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-
-    if (androidImplementation != null) {
-      await androidImplementation.createNotificationChannel(
-        const AndroidNotificationChannel(
-          expiryChannelId,
-          'BismillahStore Expiry Alerts',
-          description: 'Audible high-priority alerts for expiring and expired medicines',
-          importance: Importance.max,
-          playSound: true,
-          enableVibration: true,
-          showBadge: true,
-        ),
-      );
-
-      await androidImplementation.createNotificationChannel(
-        const AndroidNotificationChannel(
-          backupChannelId,
-          'BismillahStore Backup Reminders',
-          description: 'Periodic reminders to export and secure store records',
-          importance: Importance.defaultImportance,
-          playSound: true,
-        ),
-      );
-    }
-
-    _initialized = true;
   }
 
   /// Requests the POST_NOTIFICATIONS permission on Android 13+ (API 33+)
@@ -314,7 +307,7 @@ class NotificationService {
       priority: Priority.max,
       playSound: true,
       enableVibration: true,
-      icon: 'ic_notification',
+      icon: '@mipmap/ic_launcher',
     );
 
     await notificationsPlugin.show(
@@ -356,7 +349,7 @@ class NotificationService {
       priority: Priority.max,
       playSound: true,
       enableVibration: true,
-      icon: 'ic_notification',
+      icon: '@mipmap/ic_launcher',
     );
 
     await cancelNotification(scheduledTestNotificationId);
@@ -411,7 +404,7 @@ class NotificationService {
       priority: Priority.high,
       playSound: true,
       enableVibration: true,
-      icon: 'ic_notification',
+      icon: '@mipmap/ic_launcher',
     );
 
     await notificationsPlugin.show(

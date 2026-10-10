@@ -48,15 +48,23 @@ class AppLockService extends StateNotifier<AppLockState> {
   }
 
   Future<void> _loadState() async {
-    final lockEnabledStr = await _storage.read(key: _keyLockEnabled);
-    final lockEnabled = lockEnabledStr == 'true';
-    final hasSecurity = await isDeviceSecurityAvailable();
+    try {
+      final lockEnabledStr = await _storage.read(key: _keyLockEnabled);
+      final lockEnabled = lockEnabledStr == 'true';
+      final hasSecurity = await isDeviceSecurityAvailable();
 
-    state = AppLockState(
-      isLockEnabled: lockEnabled,
-      isUnlocked: !lockEnabled, // If lock is disabled, start unlocked
-      isDeviceSecurityAvailable: hasSecurity,
-    );
+      state = AppLockState(
+        isLockEnabled: lockEnabled,
+        isUnlocked: !lockEnabled, // If lock is disabled, start unlocked
+        isDeviceSecurityAvailable: hasSecurity,
+      );
+    } catch (_) {
+      state = const AppLockState(
+        isLockEnabled: false,
+        isUnlocked: true,
+        isDeviceSecurityAvailable: false,
+      );
+    }
   }
 
   Future<bool> isDeviceSecurityAvailable() async {

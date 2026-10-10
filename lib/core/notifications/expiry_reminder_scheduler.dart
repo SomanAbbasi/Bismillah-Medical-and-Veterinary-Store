@@ -165,7 +165,7 @@ class ExpiryReminderScheduler {
           priority: Priority.max,
           playSound: true,
           enableVibration: true,
-          icon: 'ic_notification',
+          icon: '@mipmap/ic_launcher',
         );
 
         // Cancel previous schedule for this stable ID before setting replacement

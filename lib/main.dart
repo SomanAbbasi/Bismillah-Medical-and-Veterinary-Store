@@ -13,22 +13,30 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Enforce preferred portrait orientation on mobile phones
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  try {
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+  } catch (_) {}
 
   // Set up transparent status bar with dark icons
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-    ),
-  );
+  try {
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+      ),
+    );
+  } catch (_) {}
 
-  // Initialize notifications subsystem
-  final notifService = NotificationService();
-  await notifService.initialize();
+  // Initialize notifications subsystem safely without ever blocking runApp
+  try {
+    final notifService = NotificationService();
+    await notifService.initialize();
+  } catch (e) {
+    debugPrint('NotificationService init error: $e');
+  }
 
   runApp(
     const ProviderScope(
