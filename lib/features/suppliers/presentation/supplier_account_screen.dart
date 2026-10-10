@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/files/attachment_service.dart';
+import '../../../core/reports/pdf_report_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
@@ -35,6 +36,7 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
   String _shopName = 'BismillahStore';
   DateTime? _startDate;
   DateTime? _endDate;
+  bool _isSingleDay = false;
 
   @override
   void initState() {
@@ -62,12 +64,50 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
     await Share.share(statement, subject: 'Supplier Statement - ${item.supplier.name}');
   }
 
+  Future<void> _exportPdfStatement(SupplierWithBalance item, List<SupplierTransactionWithRunningBalance> history) async {
+    final shopProfile = await ref.read(shopProfileProvider.future);
+    String? periodLabel;
+    if (_startDate != null && _endDate != null) {
+      if (_isSingleDay) {
+        periodLabel = 'Single Date: ${DateFormatter.formatDate(_startDate!)}';
+      } else {
+        periodLabel = '${DateFormatter.formatDate(_startDate!)} to ${DateFormatter.formatDate(_endDate!)}';
+      }
+    } else {
+      periodLabel = 'All Recorded Transactions';
+    }
+
+    await PdfReportService.printSupplierLedger(
+      shop: shopProfile,
+      supplier: item.supplier,
+      history: history,
+      currentBalancePaisa: item.balancePaisa,
+      periodLabel: periodLabel,
+    );
+  }
+
+  Future<void> _pickSingleDate(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _startDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _startDate = DateFormatter.toDateOnly(picked);
+        _endDate = DateTime(picked.year, picked.month, picked.day, 23, 59, 59);
+        _isSingleDay = true;
+      });
+    }
+  }
+
   Future<void> _pickDateRange(BuildContext context) async {
     final range = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
-      initialDateRange: _startDate != null && _endDate != null
+      initialDateRange: _startDate != null && _endDate != null && !_isSingleDay
           ? DateTimeRange(start: _startDate!, end: _endDate!)
           : null,
     );
@@ -76,6 +116,7 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
       setState(() {
         _startDate = range.start;
         _endDate = DateTime(range.end.year, range.end.month, range.end.day, 23, 59, 59);
+        _isSingleDay = false;
       });
     }
   }
@@ -84,7 +125,32 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
     setState(() {
       _startDate = null;
       _endDate = null;
+      _isSingleDay = false;
     });
+  }
+
+  Widget _buildPeriodChip(String label, bool isSelected, VoidCallback onTap) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.primary : Colors.transparent,
+            borderRadius: AppRadii.roundedSm,
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isSelected ? Colors.white : AppColors.textSecondary,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -113,8 +179,16 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
             title: Text(supplier.name),
             actions: [
               IconButton(
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                tooltip: 'Export PDF Statement',
+                onPressed: () async {
+                  final history = await ref.read(supplierRepositoryProvider).getTransactionsWithRunningBalance(supplier.id);
+                  _exportPdfStatement(item, history);
+                },
+              ),
+              IconButton(
                 icon: const Icon(Icons.share_outlined),
-                tooltip: 'Share Statement',
+                tooltip: 'Share Statement (WhatsApp)',
                 onPressed: () async {
                   final history = await ref.read(supplierRepositoryProvider).getTransactionsWithRunningBalance(supplier.id);
                   _shareStatement(item, history);
@@ -278,47 +352,123 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                         ],
                       ),
                       const SizedBox(height: AppSpacing.sm),
-                      SecondaryButton(
-                        label: 'Share Account Statement (WhatsApp/SMS)',
-                        icon: Icons.share,
-                        onPressed: () => _shareStatement(item, history),
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-
-                      // Date Filter Header
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Ledger Transactions (${history.length})', style: AppTypography.heading3),
-                          Row(
-                            children: [
-                              if (_startDate != null) ...[
-                                TextButton(
-                                  onPressed: _clearDateFilter,
-                                  child: const Text('Clear Filter', style: TextStyle(color: AppColors.danger, fontSize: 12)),
-                                ),
-                              ],
-                              IconButton(
-                                icon: Icon(
-                                  _startDate != null ? Icons.filter_alt : Icons.filter_alt_outlined,
-                                  color: _startDate != null ? AppColors.primary : AppColors.textMuted,
-                                ),
-                                tooltip: 'Filter by Date Range',
-                                onPressed: () => _pickDateRange(context),
-                              ),
-                            ],
+                          Expanded(
+                            child: SecondaryButton(
+                              label: 'WhatsApp Statement',
+                              icon: Icons.share,
+                              onPressed: () => _shareStatement(item, history),
+                            ),
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: SecondaryButton(
+                              label: 'Export PDF Statement',
+                              icon: Icons.picture_as_pdf,
+                              onPressed: () => _exportPdfStatement(item, history),
+                            ),
                           ),
                         ],
                       ),
+                      const SizedBox(height: AppSpacing.lg),
+
+                      // Date Filter Bar
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: AppRadii.roundedMd,
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Row(
+                          children: [
+                            _buildPeriodChip(
+                              'All Time',
+                              _startDate == null,
+                              _clearDateFilter,
+                            ),
+                            _buildPeriodChip(
+                              'Today',
+                              _startDate != null && _endDate != null && _isSingleDay && DateFormatter.isToday(_startDate!),
+                              () {
+                                final now = DateFormatter.today();
+                                setState(() {
+                                  _startDate = now;
+                                  _endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+                                  _isSingleDay = true;
+                                });
+                              },
+                            ),
+                            _buildPeriodChip(
+                              'Month',
+                              _startDate != null && _endDate != null && !_isSingleDay && _startDate!.day == 1,
+                              () {
+                                final now = DateTime.now();
+                                setState(() {
+                                  _startDate = DateTime(now.year, now.month, 1);
+                                  _endDate = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+                                  _isSingleDay = false;
+                                });
+                              },
+                            ),
+                            _buildPeriodChip(
+                              '1 Day',
+                              _startDate != null && _isSingleDay && !DateFormatter.isToday(_startDate!),
+                              () => _pickSingleDate(context),
+                            ),
+                            _buildPeriodChip(
+                              'Range',
+                              _startDate != null && !_isSingleDay && _startDate!.day != 1,
+                              () => _pickDateRange(context),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Active Date Filter Banner
                       if (_startDate != null && _endDate != null) ...[
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                          child: Text(
-                            'Showing transactions from ${DateFormatter.formatDate(_startDate!)} to ${DateFormatter.formatDate(_endDate!)}',
-                            style: AppTypography.bodySmall.copyWith(color: AppColors.primary, fontWeight: FontWeight.w600),
+                        Container(
+                          margin: const EdgeInsets.only(top: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryLight.withValues(alpha: 0.25),
+                            borderRadius: AppRadii.roundedSm,
+                            border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.calendar_today, size: 14, color: AppColors.primary),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  _isSingleDay
+                                      ? 'Filtered Single Day: ${DateFormatter.formatDate(_startDate!)}'
+                                      : 'Filtered Range: ${DateFormatter.formatDate(_startDate!)} to ${DateFormatter.formatDate(_endDate!)}',
+                                  style: AppTypography.bodySmall.copyWith(color: AppColors.primary, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              InkWell(
+                                onTap: () {
+                                  if (_isSingleDay) {
+                                    _pickSingleDate(context);
+                                  } else {
+                                    _pickDateRange(context);
+                                  }
+                                },
+                                child: const Text('Change', style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
+                              ),
+                              const SizedBox(width: 10),
+                              InkWell(
+                                onTap: _clearDateFilter,
+                                child: const Text('Clear', style: TextStyle(color: AppColors.danger, fontSize: 11, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
                           ),
                         ),
                       ],
+                      const SizedBox(height: AppSpacing.sm),
+                      Text('Ledger Transactions (${history.length})', style: AppTypography.heading3),
                       const SizedBox(height: AppSpacing.xs),
 
                       if (history.isEmpty)

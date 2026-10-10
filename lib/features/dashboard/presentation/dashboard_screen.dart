@@ -5,6 +5,7 @@ import '../../../core/database/database_provider.dart';
 
 import '../../../core/notifications/notification_service.dart';
 import '../../../core/notifications/expiry_reminder_scheduler.dart';
+import '../../../core/reports/pdf_report_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
@@ -122,6 +123,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            tooltip: "Export Daily PDF Report",
+            onPressed: () async {
+              final summary = summaryAsync.valueOrNull;
+              if (summary != null) {
+                final shopProfile = await ref.read(shopProfileProvider.future);
+                await PdfReportService.printExecutiveSummary(
+                  shop: shopProfile,
+                  summary: summary,
+                );
+              }
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: 'Recycle Bin (Trash)',
@@ -311,7 +326,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                 const SizedBox(height: AppSpacing.lg),
 
                 // Financial & Expiry Overview
-                const SectionHeader(title: "Today's Performance"),
+                SectionHeader(
+                  title: "Today's Performance",
+                  actionLabel: 'PDF Summary',
+                  onAction: () async {
+                    final shopProfile = await ref.read(shopProfileProvider.future);
+                    await PdfReportService.printExecutiveSummary(
+                      shop: shopProfile,
+                      summary: summary,
+                    );
+                  },
+                ),
                 Row(
                   children: [
                     Expanded(

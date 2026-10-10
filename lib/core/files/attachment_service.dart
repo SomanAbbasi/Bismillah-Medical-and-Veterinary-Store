@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -40,7 +41,9 @@ class AttachmentService {
   Future<AttachmentResult?> capturePhoto() async {
     final photo = await _imagePicker.pickImage(
       source: ImageSource.camera,
-      imageQuality: 85,
+      maxWidth: 1280,
+      maxHeight: 1280,
+      imageQuality: 70,
     );
     if (photo == null) return null;
     return _saveFileToManagedDir(File(photo.path), photo.name, 'image/jpeg');
@@ -49,7 +52,9 @@ class AttachmentService {
   Future<AttachmentResult?> pickImageFromGallery() async {
     final photo = await _imagePicker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 85,
+      maxWidth: 1280,
+      maxHeight: 1280,
+      imageQuality: 70,
     );
     if (photo == null) return null;
     return _saveFileToManagedDir(File(photo.path), photo.name, 'image/jpeg');
@@ -80,10 +85,42 @@ class AttachmentService {
   ) async {
     final dir = await getAttachmentsDirectory();
     final ext = p.extension(originalName).isNotEmpty
-        ? p.extension(originalName)
+        ? p.extension(originalName).toLowerCase()
         : '.jpg';
     final uniqueName = '${const Uuid().v4()}$ext';
     final destinationFile = File(p.join(dir.path, uniqueName));
+
+    final isImage = mimeType.startsWith('image/') ||
+        ext == '.jpg' ||
+        ext == '.jpeg' ||
+        ext == '.png';
+
+    if (isImage) {
+      try {
+        final bytes = await sourceFile.readAsBytes();
+        final decoded = img.decodeImage(bytes);
+        if (decoded != null) {
+          img.Image target = decoded;
+          if (decoded.width > 1280 || decoded.height > 1280) {
+            target = img.copyResize(
+              decoded,
+              width: decoded.width >= decoded.height ? 1280 : null,
+              height: decoded.height > decoded.width ? 1280 : null,
+              interpolation: img.Interpolation.linear,
+            );
+          }
+          final compressedBytes = img.encodeJpg(target, quality: 70);
+          await destinationFile.writeAsBytes(compressedBytes);
+          return AttachmentResult(
+            relativePath: uniqueName,
+            originalName: originalName,
+            mimeType: 'image/jpeg',
+          );
+        }
+      } catch (_) {
+        // Fallback to copy if compression encounters an issue
+      }
+    }
 
     await sourceFile.copy(destinationFile.path);
 

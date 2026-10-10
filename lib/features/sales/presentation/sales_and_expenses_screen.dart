@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/files/attachment_service.dart';
+import '../../../core/reports/pdf_report_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
@@ -20,7 +21,7 @@ import '../../../core/widgets/status_chip.dart';
 import '../../expenses/data/expense_repository.dart';
 import '../data/sales_repository.dart';
 
-enum SalesExpensePeriod { today, thisWeek, thisMonth, custom }
+enum SalesExpensePeriod { today, thisWeek, thisMonth, singleDate, custom }
 
 class SalesAndExpensesScreen extends ConsumerStatefulWidget {
   final String? initialTab; // 'sales' or 'expenses'
@@ -35,6 +36,7 @@ class _SalesAndExpensesScreenState extends ConsumerState<SalesAndExpensesScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   SalesExpensePeriod _period = SalesExpensePeriod.today;
+  DateTime _selectedSingleDate = DateTime.now();
   DateTime _customStart = DateTime.now().subtract(const Duration(days: 30));
   DateTime _customEnd = DateTime.now();
 
@@ -82,11 +84,61 @@ class _SalesAndExpensesScreenState extends ConsumerState<SalesAndExpensesScreen>
       case SalesExpensePeriod.thisMonth:
         final startOfMonth = DateTime(now.year, now.month, 1);
         return (startOfMonth, endOfToday);
+      case SalesExpensePeriod.singleDate:
+        final dayStart = DateFormatter.toDateOnly(_selectedSingleDate);
+        final dayEnd = dayStart.add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1));
+        return (dayStart, dayEnd);
       case SalesExpensePeriod.custom:
         return (
           DateFormatter.toDateOnly(_customStart),
           DateFormatter.toDateOnly(_customEnd).add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1)),
         );
+    }
+  }
+
+  String _getPeriodTitle() {
+    switch (_period) {
+      case SalesExpensePeriod.today:
+        return 'Today (${DateFormatter.formatShortDate(DateTime.now())})';
+      case SalesExpensePeriod.thisWeek:
+        return 'This Week';
+      case SalesExpensePeriod.thisMonth:
+        return 'This Month';
+      case SalesExpensePeriod.singleDate:
+        return 'Single Day (${DateFormatter.formatDate(_selectedSingleDate)})';
+      case SalesExpensePeriod.custom:
+        return '${DateFormatter.formatDate(_customStart)} to ${DateFormatter.formatDate(_customEnd)}';
+    }
+  }
+
+  Future<void> _pickSingleDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedSingleDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (picked != null) {
+      setState(() {
+        _selectedSingleDate = picked;
+        _period = SalesExpensePeriod.singleDate;
+      });
+    }
+  }
+
+  Future<void> _pickDateRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      initialDateRange: DateTimeRange(start: _customStart, end: _customEnd),
+    );
+    if (picked != null) {
+      setState(() {
+        _customStart = picked.start;
+        _customEnd = picked.end;
+        _period = SalesExpensePeriod.custom;
+      });
     }
   }
 
@@ -257,28 +309,57 @@ class _SalesAndExpensesScreenState extends ConsumerState<SalesAndExpensesScreen>
                   ],
                   const Divider(height: 24),
 
-                  // Share Report Button
-                  PrimaryButton(
-                    label: 'Share Financial Statement (WhatsApp)',
-                    icon: Icons.share,
-                    onPressed: () async {
-                      final buffer = StringBuffer();
-                      buffer.writeln('====================================');
-                      buffer.writeln('BismillahStore - Financial Statement');
-                      buffer.writeln('====================================');
-                      buffer.writeln('Period: ${DateFormatter.formatDate(startDate)} to ${DateFormatter.formatDate(endDate)}');
-                      buffer.writeln('------------------------------------');
-                      buffer.writeln('Total Sales: ${CurrencyFormatter.formatPaisa(totalSales)}');
-                      buffer.writeln('  Cash: ${CurrencyFormatter.formatPaisa(cashSales)}');
-                      buffer.writeln('  Credit: ${CurrencyFormatter.formatPaisa(creditSales)}');
-                      buffer.writeln('Total Expenses: ${CurrencyFormatter.formatPaisa(totalExpenses)}');
-                      buffer.writeln('------------------------------------');
-                      buffer.writeln('NET PROFIT: ${CurrencyFormatter.formatPaisa(netSales)}');
-                      buffer.writeln('====================================');
-                      buffer.writeln('Generated via BismillahStore App');
+                  // Action Buttons: WhatsApp and PDF Export
+                  Row(
+                    children: [
+                      Expanded(
+                        child: PrimaryButton(
+                          label: 'WhatsApp Share',
+                          icon: Icons.share,
+                          onPressed: () async {
+                            final buffer = StringBuffer();
+                            buffer.writeln('====================================');
+                            buffer.writeln('BismillahStore - Financial Statement');
+                            buffer.writeln('====================================');
+                            buffer.writeln('Period: ${DateFormatter.formatDate(startDate)} to ${DateFormatter.formatDate(endDate)}');
+                            buffer.writeln('------------------------------------');
+                            buffer.writeln('Total Sales: ${CurrencyFormatter.formatPaisa(totalSales)}');
+                            buffer.writeln('  Cash: ${CurrencyFormatter.formatPaisa(cashSales)}');
+                            buffer.writeln('  Credit: ${CurrencyFormatter.formatPaisa(creditSales)}');
+                            buffer.writeln('Total Expenses: ${CurrencyFormatter.formatPaisa(totalExpenses)}');
+                            buffer.writeln('------------------------------------');
+                            buffer.writeln('NET PROFIT: ${CurrencyFormatter.formatPaisa(netSales)}');
+                            buffer.writeln('====================================');
+                            buffer.writeln('Generated via BismillahStore App');
 
-                      await Share.share(buffer.toString(), subject: 'Store Financial Report');
-                    },
+                            await Share.share(buffer.toString(), subject: 'Store Financial Report');
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: PrimaryButton(
+                          label: 'Export PDF',
+                          icon: Icons.picture_as_pdf,
+                          backgroundColor: AppColors.primary,
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            _showPdfExportModal(
+                              context,
+                              totalSales,
+                              cashSales,
+                              creditSales,
+                              totalExpenses,
+                              netSales,
+                              sales,
+                              expenses,
+                              startDate,
+                              endDate,
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -286,6 +367,143 @@ class _SalesAndExpensesScreenState extends ConsumerState<SalesAndExpensesScreen>
           ),
         );
       },
+    );
+  }
+
+  Future<void> _showPdfExportModal(
+    BuildContext context,
+    int totalSales,
+    int cashSales,
+    int creditSales,
+    int totalExpenses,
+    int netSales,
+    List<Sale> sales,
+    List<Expense> expenses,
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
+    final shopProfile = await ref.read(shopProfileProvider.future);
+    final periodLabel = _getPeriodTitle();
+
+    if (!context.mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.picture_as_pdf, color: AppColors.primary, size: 24),
+                      const SizedBox(width: 8),
+                      Text('Generate PDF Report', style: AppTypography.heading3),
+                    ],
+                  ),
+                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+                ],
+              ),
+              Text('Period: $periodLabel', style: AppTypography.bodySmall.copyWith(color: AppColors.textMuted)),
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: AppRadii.roundedMd),
+                  child: const Icon(Icons.assessment, color: AppColors.primary),
+                ),
+                title: const Text('Complete Financial & Net Profit Report', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                subtitle: const Text('Store header with logo, sales & expense summary, and itemized tables', style: TextStyle(fontSize: 11)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await PdfReportService.printFinancialReport(
+                    shop: shopProfile,
+                    periodLabel: periodLabel,
+                    startDate: startDate,
+                    endDate: endDate,
+                    totalSalesPaisa: totalSales,
+                    cashSalesPaisa: cashSales,
+                    creditSalesPaisa: creditSales,
+                    totalExpensesPaisa: totalExpenses,
+                    netSalesPaisa: netSales,
+                    sales: sales,
+                    expenses: expenses,
+                    includeSales: true,
+                    includeExpenses: true,
+                  );
+                },
+              ),
+              const Divider(),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: AppRadii.roundedMd),
+                  child: const Icon(Icons.point_of_sale, color: AppColors.primary),
+                ),
+                title: const Text('Sales Ledger Report Only', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                subtitle: const Text('Itemized sales records, customer invoices, and totals', style: TextStyle(fontSize: 11)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await PdfReportService.printFinancialReport(
+                    shop: shopProfile,
+                    periodLabel: periodLabel,
+                    startDate: startDate,
+                    endDate: endDate,
+                    totalSalesPaisa: totalSales,
+                    cashSalesPaisa: cashSales,
+                    creditSalesPaisa: creditSales,
+                    totalExpensesPaisa: totalExpenses,
+                    netSalesPaisa: netSales,
+                    sales: sales,
+                    expenses: expenses,
+                    includeSales: true,
+                    includeExpenses: false,
+                  );
+                },
+              ),
+              const Divider(),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: AppColors.warningLight, borderRadius: AppRadii.roundedMd),
+                  child: const Icon(Icons.receipt_long, color: AppColors.warning),
+                ),
+                title: const Text('Store Expenses Report Only', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                subtitle: const Text('Operational expenses log with category totals', style: TextStyle(fontSize: 11)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await PdfReportService.printFinancialReport(
+                    shop: shopProfile,
+                    periodLabel: periodLabel,
+                    startDate: startDate,
+                    endDate: endDate,
+                    totalSalesPaisa: totalSales,
+                    cashSalesPaisa: cashSales,
+                    creditSalesPaisa: creditSales,
+                    totalExpensesPaisa: totalExpenses,
+                    netSalesPaisa: netSales,
+                    sales: sales,
+                    expenses: expenses,
+                    includeSales: false,
+                    includeExpenses: true,
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -992,6 +1210,33 @@ class _SalesAndExpensesScreenState extends ConsumerState<SalesAndExpensesScreen>
         title: const Text('Sales & Expenses'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            tooltip: 'Export PDF Report',
+            onPressed: () async {
+              final sales = await salesRepo.getSalesForRange(startDate, endDate);
+              final expenses = await expenseRepo.getExpensesForRange(startDate, endDate);
+              final totalSales = sales.fold(0, (s, e) => s + e.finalAmountPaisa);
+              final cashSales = sales.fold(0, (s, e) => s + e.cashPaidPaisa);
+              final creditSales = sales.fold(0, (s, e) => s + e.creditAmountPaisa);
+              final totalExpenses = expenses.fold(0, (s, e) => s + e.amountPaisa);
+              final netSales = totalSales - totalExpenses;
+              if (context.mounted) {
+                _showPdfExportModal(
+                  context,
+                  totalSales,
+                  cashSales,
+                  creditSales,
+                  totalExpenses,
+                  netSales,
+                  sales,
+                  expenses,
+                  startDate,
+                  endDate,
+                );
+              }
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.analytics_outlined),
             tooltip: 'Financial Report',
             onPressed: () async {
@@ -1101,27 +1346,60 @@ class _SalesAndExpensesScreenState extends ConsumerState<SalesAndExpensesScreen>
                             onTap: () => setState(() => _period = SalesExpensePeriod.thisMonth),
                           ),
                           _PeriodTab(
-                            label: 'Custom',
+                            label: '1 Day',
+                            isSelected: _period == SalesExpensePeriod.singleDate,
+                            onTap: _pickSingleDate,
+                          ),
+                          _PeriodTab(
+                            label: 'Range',
                             isSelected: _period == SalesExpensePeriod.custom,
-                            onTap: () async {
-                              final picked = await showDateRangePicker(
-                                context: context,
-                                firstDate: DateTime(2020),
-                                lastDate: DateTime(2035),
-                                initialDateRange: DateTimeRange(start: _customStart, end: _customEnd),
-                              );
-                              if (picked != null) {
-                                setState(() {
-                                  _customStart = picked.start;
-                                  _customEnd = picked.end;
-                                  _period = SalesExpensePeriod.custom;
-                                });
-                              }
-                            },
+                            onTap: _pickDateRange,
                           ),
                         ],
                       ),
                     ),
+
+                    // Active Single Date / Range Filter Banner
+                    if (_period == SalesExpensePeriod.singleDate || _period == SalesExpensePeriod.custom) ...[
+                      Container(
+                        margin: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryLight.withValues(alpha: 0.25),
+                          borderRadius: AppRadii.roundedSm,
+                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_today, size: 14, color: AppColors.primary),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                _period == SalesExpensePeriod.singleDate
+                                    ? 'Filtered Single Day: ${DateFormatter.formatDate(_selectedSingleDate)}'
+                                    : 'Filtered Range: ${DateFormatter.formatDate(_customStart)} to ${DateFormatter.formatDate(_customEnd)}',
+                                style: AppTypography.bodySmall.copyWith(color: AppColors.primary, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            InkWell(
+                              onTap: () {
+                                if (_period == SalesExpensePeriod.singleDate) {
+                                  _pickSingleDate();
+                                } else {
+                                  _pickDateRange();
+                                }
+                              },
+                              child: const Text('Change', style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
+                            ),
+                            const SizedBox(width: 10),
+                            InkWell(
+                              onTap: () => setState(() => _period = SalesExpensePeriod.today),
+                              child: const Text('Clear', style: TextStyle(color: AppColors.danger, fontSize: 11, fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 10),
 
                     // Net Profit / Net Sales Metrics

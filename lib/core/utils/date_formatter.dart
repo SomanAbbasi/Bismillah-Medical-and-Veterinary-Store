@@ -42,6 +42,12 @@ class DateFormatter {
     return DateTime(now.year, now.month, now.day);
   }
 
+  /// Checks whether a given DateTime falls on today
+  static bool isToday(DateTime date) {
+    final now = DateTime.now();
+    return date.year == now.year && date.month == now.month && date.day == now.day;
+  }
+
   /// Parse a DD/MM/YYYY string safely
   static DateTime? tryParseDate(String input) {
     try {
