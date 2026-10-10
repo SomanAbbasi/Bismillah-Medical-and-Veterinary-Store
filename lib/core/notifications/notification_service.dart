@@ -10,22 +10,32 @@ class NotificationDiagnosticInfo {
   final bool canScheduleExactAlarms;
   final bool isChannelEnabled;
   final bool isSoundEnabled;
+  final bool isBatteryOptimizedExempt;
+  final String? deviceManufacturer;
+  final int? androidSdk;
   final int scheduledAlarmsCount;
   final int activeRemindersCount;
   final DateTime? nextExpectedNotification;
   final DateTime? lastReconciledAt;
   final String? lastError;
+  final bool isScheduledTestActive;
+  final DateTime? scheduledTestExpectedAt;
 
   NotificationDiagnosticInfo({
     required this.areNotificationsEnabled,
     required this.canScheduleExactAlarms,
     required this.isChannelEnabled,
     required this.isSoundEnabled,
+    required this.isBatteryOptimizedExempt,
+    this.deviceManufacturer,
+    this.androidSdk,
     required this.scheduledAlarmsCount,
     required this.activeRemindersCount,
     this.nextExpectedNotification,
     this.lastReconciledAt,
     this.lastError,
+    this.isScheduledTestActive = false,
+    this.scheduledTestExpectedAt,
   });
 }
 
@@ -37,28 +47,37 @@ class NotificationService {
   static const String backupChannelId = 'bismillahstore_backup_v4';
   static const MethodChannel _settingsChannel = MethodChannel('com.bismillahstore/settings_channel');
 
+  static const int immediateTestNotificationId = 7777;
+  static const int scheduledTestNotificationId = 8888;
+  static const int expirySummaryNotificationId = 9999;
+
+  DateTime? _scheduledTestExpectedAt;
+  DateTime? get scheduledTestExpectedAt => _scheduledTestExpectedAt;
+
   Future<void> initialize() async {
     if (_initialized) return;
 
-    // 1. Initialize timezones with modern offset matching
+    // 1. Initialize timezones with reliable local matching
     tz.initializeTimeZones();
     try {
       final now = DateTime.now();
       final offsetMs = now.timeZoneOffset.inMilliseconds;
-      tz.Location? matched;
-      for (final loc in tz.timeZoneDatabase.locations.values) {
-        if (loc.timeZone(now.millisecondsSinceEpoch).offset == offsetMs) {
-          matched = loc;
-          break;
-        }
-      }
-      if (matched != null) {
-        tz.setLocalLocation(matched);
-      } else if (offsetMs == 18000000) {
-        // Fallback for Pakistan Standard Time (PKT, UTC+5)
+      if (offsetMs == 18000000) {
+        // Pakistan Standard Time (PKT, UTC+5)
         tz.setLocalLocation(tz.getLocation('Asia/Karachi'));
       } else {
-        tz.setLocalLocation(tz.UTC);
+        tz.Location? matched;
+        for (final loc in tz.timeZoneDatabase.locations.values) {
+          if (loc.timeZone(now.millisecondsSinceEpoch).offset == offsetMs) {
+            matched = loc;
+            break;
+          }
+        }
+        if (matched != null) {
+          tz.setLocalLocation(matched);
+        } else {
+          tz.setLocalLocation(tz.UTC);
+        }
       }
     } catch (_) {
       try {
@@ -68,16 +87,25 @@ class NotificationService {
       }
     }
 
-    // 2. Initialize local notifications
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    // 2. Initialize local notifications with drawable icon resource
+    // 'ic_notification' is located in android/app/src/main/res/drawable
+    const androidSettings = AndroidInitializationSettings('ic_notification');
     const initSettings = InitializationSettings(android: androidSettings);
 
-    await notificationsPlugin.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: (response) {
-        // Notification payload routing if needed
-      },
-    );
+    try {
+      await notificationsPlugin.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: (response) {
+          // Response handling
+        },
+      );
+    } catch (_) {
+      // Fallback with standard launcher icon name
+      const fallbackSettings = InitializationSettings(
+        android: AndroidInitializationSettings('ic_launcher'),
+      );
+      await notificationsPlugin.initialize(fallbackSettings);
+    }
 
     // 3. Create high-importance notification channels
     final androidImplementation = notificationsPlugin
@@ -125,7 +153,7 @@ class NotificationService {
     return false;
   }
 
-  /// Requests exact alarm scheduling permission (Android 12+) by opening OS exact-alarm settings
+  /// Requests exact alarm scheduling permission (Android 12+)
   Future<bool> requestExactAlarmsPermission() async {
     await initialize();
     if (!Platform.isAndroid) return true;
@@ -173,6 +201,28 @@ class NotificationService {
     return false;
   }
 
+  /// Checks if battery optimization exemption is active (unrestricted background)
+  Future<bool> isIgnoringBatteryOptimizations() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final res = await _settingsChannel.invokeMethod<bool>('isIgnoringBatteryOptimizations');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Retrieves device info (Manufacturer, SDK level)
+  Future<Map<String, dynamic>> getDeviceInfo() async {
+    if (!Platform.isAndroid) return {'manufacturer': 'Unknown', 'sdkInt': 0, 'isSamsung': false};
+    try {
+      final res = await _settingsChannel.invokeMapMethod<String, dynamic>('getDeviceInfo');
+      return res ?? {};
+    } catch (_) {
+      return {'manufacturer': 'Android', 'sdkInt': 0, 'isSamsung': false};
+    }
+  }
+
   /// Opens the device App Notification Settings page via native Intent
   Future<void> openNotificationSettings() async {
     if (!Platform.isAndroid) return;
@@ -197,12 +247,15 @@ class NotificationService {
     } catch (_) {}
   }
 
-  /// Opens the device Battery Optimization Settings page via native Intent
-  Future<void> openBatteryOptimizationSettings() async {
-    if (!Platform.isAndroid) return;
+  /// Opens battery optimization settings with device-specific intent
+  Future<Map<String, dynamic>> openBatteryOptimizationSettings() async {
+    if (!Platform.isAndroid) return {'launched': false};
     try {
-      await _settingsChannel.invokeMethod('openBatteryOptimizationSettings');
-    } catch (_) {}
+      final res = await _settingsChannel.invokeMapMethod<String, dynamic>('openBatteryOptimizationSettings');
+      return res ?? {'launched': true};
+    } catch (e) {
+      return {'launched': false, 'error': e.toString()};
+    }
   }
 
   /// Returns total count of pending notifications registered with the OS AlarmManager
@@ -237,30 +290,97 @@ class NotificationService {
     return {'channelEnabled': true, 'soundEnabled': true};
   }
 
-  /// Fires an instant sound notification to verify system audio and alerts
-  Future<void> testSoundNotification() async {
+  /// Fires an immediate test notification with thorough OS status validation
+  Future<void> testImmediateNotification() async {
     await initialize();
+
+    // 1. Verify notification permission
+    final enabled = await areNotificationsEnabled();
+    if (!enabled) {
+      throw Exception('Notification permission is not granted. Please enable notifications in Android Settings.');
+    }
+
+    // 2. Verify channel health
+    final health = await checkChannelHealth();
+    if (!(health['channelEnabled'] ?? true)) {
+      throw Exception('The "$expiryChannelId" notification channel is blocked or disabled in system settings.');
+    }
 
     const androidDetails = AndroidNotificationDetails(
       expiryChannelId,
       'BismillahStore Expiry Alerts',
-      channelDescription: 'Timely notifications for expiring and expired medicines',
+      channelDescription: 'Audible high-priority alerts for expiring and expired medicines',
       importance: Importance.max,
-      priority: Priority.high,
+      priority: Priority.max,
       playSound: true,
       enableVibration: true,
-      icon: '@mipmap/ic_launcher',
+      icon: 'ic_notification',
     );
-
-    const notificationDetails = NotificationDetails(android: androidDetails);
 
     await notificationsPlugin.show(
-      7777,
-      '🔔 BismillahStore Notification Test',
-      'System sound and vibration alert is working properly with full audio!',
-      notificationDetails,
-      payload: 'test_alert',
+      immediateTestNotificationId,
+      '🔔 BismillahStore Immediate Test',
+      'Immediate alert test successful! Sound, banner, and vibration are active.',
+      const NotificationDetails(android: androidDetails),
+      payload: 'immediate_test',
     );
+  }
+
+  /// Backward-compatible alias for testImmediateNotification
+  Future<void> testSoundNotification() async {
+    await testImmediateNotification();
+  }
+
+  /// Schedules a standalone test notification a few seconds into the future
+  Future<DateTime> scheduleTestNotification({int secondsFromNow = 30}) async {
+    await initialize();
+
+    final enabled = await areNotificationsEnabled();
+    if (!enabled) {
+      throw Exception('Cannot schedule test: Notification permission is disabled.');
+    }
+
+    final canExact = await canScheduleExactAlarms();
+    final scheduleMode = canExact
+        ? AndroidScheduleMode.exactAllowWhileIdle
+        : AndroidScheduleMode.inexactAllowWhileIdle;
+
+    final tzNow = tz.TZDateTime.now(tz.local);
+    final scheduledDate = tzNow.add(Duration(seconds: secondsFromNow));
+
+    const androidDetails = AndroidNotificationDetails(
+      expiryChannelId,
+      'BismillahStore Expiry Alerts',
+      channelDescription: 'Audible high-priority alerts for expiring and expired medicines',
+      importance: Importance.max,
+      priority: Priority.max,
+      playSound: true,
+      enableVibration: true,
+      icon: 'ic_notification',
+    );
+
+    await cancelNotification(scheduledTestNotificationId);
+
+    await notificationsPlugin.zonedSchedule(
+      scheduledTestNotificationId,
+      '⏰ BismillahStore Scheduled Alarm Test',
+      'Scheduled reminder delivered successfully on time while app was closed/idle!',
+      scheduledDate,
+      const NotificationDetails(android: androidDetails),
+      androidScheduleMode: scheduleMode,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      payload: 'test_scheduled',
+    );
+
+    _scheduledTestExpectedAt = DateTime.now().add(Duration(seconds: secondsFromNow));
+    return _scheduledTestExpectedAt!;
+  }
+
+  /// Cancels any pending scheduled test notification
+  Future<void> cancelTestNotification() async {
+    await cancelNotification(scheduledTestNotificationId);
+    _scheduledTestExpectedAt = null;
   }
 
   /// Fires an instant status bar notification summarizing expiring or expired medicines
@@ -291,11 +411,11 @@ class NotificationService {
       priority: Priority.high,
       playSound: true,
       enableVibration: true,
-      icon: '@mipmap/ic_launcher',
+      icon: 'ic_notification',
     );
 
     await notificationsPlugin.show(
-      9999,
+      expirySummaryNotificationId,
       title,
       body,
       const NotificationDetails(android: androidDetails),
@@ -304,11 +424,16 @@ class NotificationService {
   }
 
   Future<void> cancelNotification(int id) async {
-    await notificationsPlugin.cancel(id);
+    try {
+      await notificationsPlugin.cancel(id);
+    } catch (_) {}
   }
 
   Future<void> cancelAll() async {
-    await notificationsPlugin.cancelAll();
+    try {
+      await notificationsPlugin.cancelAll();
+      _scheduledTestExpectedAt = null;
+    } catch (_) {}
   }
 }
 

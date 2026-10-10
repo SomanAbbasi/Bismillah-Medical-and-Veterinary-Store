@@ -92,5 +92,33 @@ void main() {
       expect(shouldCancelAlert(isReminderDisabled: false, isDeleted: true), true);
       expect(shouldCancelAlert(isReminderDisabled: false, isDeleted: false), false);
     });
+
+    test('Batch expiring in 5 days with 30-day lead time qualifies for reminder', () {
+      final now = DateTime(2026, 10, 10, 12, 0);
+      final today = DateTime(now.year, now.month, now.day);
+      final fiveDaysOut = today.add(const Duration(days: 5));
+      const leadDays = 30;
+
+      final reminderStartDate = fiveDaysOut.subtract(const Duration(days: leadDays));
+      final isExpired = fiveDaysOut.isBefore(today);
+      final isEligible = isExpired || now.isAfter(reminderStartDate) || now.isAtSameMomentAs(reminderStartDate);
+
+      expect(isExpired, false);
+      expect(isEligible, true);
+    });
+
+    test('Already expired batch qualifies for immediate alert', () {
+      final now = DateTime(2026, 10, 10, 12, 0);
+      final today = DateTime(now.year, now.month, now.day);
+      final expiredDate = today.subtract(const Duration(days: 3));
+      const leadDays = 30;
+
+      final reminderStartDate = expiredDate.subtract(const Duration(days: leadDays));
+      final isExpired = expiredDate.isBefore(today);
+      final isEligible = isExpired || now.isAfter(reminderStartDate) || now.isAtSameMomentAs(reminderStartDate);
+
+      expect(isExpired, true);
+      expect(isEligible, true);
+    });
   });
 }

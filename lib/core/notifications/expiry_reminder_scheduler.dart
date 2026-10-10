@@ -13,7 +13,6 @@ class ExpiryReminderScheduler {
   String? _lastError;
   int _activeRemindersCount = 0;
   DateTime? _nextExpectedNotification;
-  Timer? _inAppTimer;
 
   ExpiryReminderScheduler(this._notificationService);
 
@@ -22,28 +21,37 @@ class ExpiryReminderScheduler {
   int get activeRemindersCount => _activeRemindersCount;
   DateTime? get nextExpectedNotification => _nextExpectedNotification;
 
-  /// Fetches real, live diagnostic status of the notification and alarm subsystem
+  /// Fetches real, live diagnostic status of the notification, alarm, and battery subsystem
   Future<NotificationDiagnosticInfo> getDiagnostics(AppDatabase db) async {
     final notifsEnabled = await _notificationService.areNotificationsEnabled();
     final canExact = await _notificationService.canScheduleExactAlarms();
     final channelHealth = await _notificationService.checkChannelHealth();
+    final isBatteryExempt = await _notificationService.isIgnoringBatteryOptimizations();
+    final deviceInfo = await _notificationService.getDeviceInfo();
     final pendingCount = await _notificationService.getPendingNotificationCount();
+    final testExpected = _notificationService.scheduledTestExpectedAt;
 
     return NotificationDiagnosticInfo(
       areNotificationsEnabled: notifsEnabled,
       canScheduleExactAlarms: canExact,
       isChannelEnabled: channelHealth['channelEnabled'] ?? true,
       isSoundEnabled: channelHealth['soundEnabled'] ?? true,
+      isBatteryOptimizedExempt: isBatteryExempt,
+      deviceManufacturer: deviceInfo['manufacturer'] as String?,
+      androidSdk: deviceInfo['sdkInt'] as int?,
       scheduledAlarmsCount: pendingCount,
       activeRemindersCount: _activeRemindersCount,
       nextExpectedNotification: _nextExpectedNotification,
       lastReconciledAt: _lastReconciledAt,
       lastError: _lastError,
+      isScheduledTestActive: testExpected != null && testExpected.isAfter(DateTime.now()),
+      scheduledTestExpectedAt: testExpected,
     );
   }
 
   /// Reconciles database records with Android scheduled notification alarms
-  Future<int> reconcile(AppDatabase db) async {
+  /// Ensures idempotent scheduling without constantly postponing future alarms
+  Future<int> reconcile(AppDatabase db, {bool forceReschedule = false}) async {
     try {
       await _notificationService.initialize();
 
@@ -63,10 +71,6 @@ class ExpiryReminderScheduler {
       int scheduledCount = 0;
       DateTime? earliestNext;
 
-      // Cancel any active in-app testing timer
-      _inAppTimer?.cancel();
-      _inAppTimer = null;
-
       for (final med in medicines) {
         if (med.isDeleted || med.isDraft) {
           await _notificationService.cancelNotification(med.id);
@@ -85,7 +89,8 @@ class ExpiryReminderScheduler {
         }
 
         // Calculate lead days based on user's preference or medicine override
-        final leadDays = med.reminderLeadDays ?? (med.reminderMonths != null ? med.reminderMonths! * 30 : globalDefaultMonths * 30);
+        final leadDays = med.reminderLeadDays ??
+            (med.reminderMonths != null ? med.reminderMonths! * 30 : globalDefaultMonths * 30);
         final reminderStartDate = med.expiryDate.subtract(Duration(days: leadDays));
 
         final isExpired = med.expiryDate.isBefore(today);
@@ -99,6 +104,15 @@ class ExpiryReminderScheduler {
             nextScheduledAt: null,
             notificationId: null,
           );
+          continue;
+        }
+
+        // If already scheduled in the future and not forcing a reset, keep existing schedule intact
+        if (!forceReschedule && med.nextScheduledAt != null && med.nextScheduledAt!.isAfter(now)) {
+          scheduledCount++;
+          if (earliestNext == null || med.nextScheduledAt!.isBefore(earliestNext)) {
+            earliestNext = med.nextScheduledAt;
+          }
           continue;
         }
 
@@ -133,7 +147,9 @@ class ExpiryReminderScheduler {
           tzScheduled = tzNow.add(const Duration(minutes: 1));
         }
 
-        final batchSuffix = (med.batchNumber != null && med.batchNumber!.isNotEmpty) ? ' (Batch: ${med.batchNumber})' : '';
+        final batchSuffix = (med.batchNumber != null && med.batchNumber!.isNotEmpty)
+            ? ' (Batch: ${med.batchNumber})'
+            : '';
         final title = isExpired
             ? '🚨 EXPIRED: ${med.name}$batchSuffix'
             : '⚠️ EXPIRING SOON: ${med.name}$batchSuffix';
@@ -144,26 +160,25 @@ class ExpiryReminderScheduler {
         const androidDetails = AndroidNotificationDetails(
           NotificationService.expiryChannelId,
           'BismillahStore Expiry Alerts',
-          channelDescription: 'Timely notifications for expiring and expired medicines',
+          channelDescription: 'Audible high-priority alerts for expiring and expired medicines',
           importance: Importance.max,
           priority: Priority.max,
           playSound: true,
           enableVibration: true,
-          icon: '@mipmap/ic_launcher',
+          icon: 'ic_notification',
         );
 
         // Cancel previous schedule for this stable ID before setting replacement
         await _notificationService.cancelNotification(med.id);
 
         if (Platform.isAndroid) {
-          // Use standard exactAllowWhileIdle if exact alarms are permitted, otherwise inexactAllowWhileIdle
           final scheduleMode = canExact
               ? AndroidScheduleMode.exactAllowWhileIdle
               : AndroidScheduleMode.inexactAllowWhileIdle;
 
           if (intervalMinutes <= 1) {
-            // Schedule repeating 1-minute burst (up to 10 minutes) explicitly for fast testing
-            for (int i = 1; i <= 10; i++) {
+            // Schedule repeating 1-minute burst (up to 5 bursts) for fast testing
+            for (int i = 1; i <= 5; i++) {
               final burstId = med.id * 1000 + i;
               await _notificationService.cancelNotification(burstId);
               try {
@@ -179,7 +194,6 @@ class ExpiryReminderScheduler {
                   payload: 'medicine:${med.id}',
                 );
               } catch (_) {
-                // Inexact fallback if exact scheduling is restricted by OS
                 await _notificationService.notificationsPlugin.zonedSchedule(
                   burstId,
                   title,
@@ -243,7 +257,8 @@ class ExpiryReminderScheduler {
           if (m.expiryDate.isBefore(today)) {
             expCount++;
           } else {
-            final leadDays = m.reminderLeadDays ?? (m.reminderMonths != null ? m.reminderMonths! * 30 : globalDefaultMonths * 30);
+            final leadDays = m.reminderLeadDays ??
+                (m.reminderMonths != null ? m.reminderMonths! * 30 : globalDefaultMonths * 30);
             final reminderStartDate = m.expiryDate.subtract(Duration(days: leadDays));
             if (now.isAfter(reminderStartDate) || now.isAtSameMomentAs(reminderStartDate)) {
               soonCount++;
@@ -254,16 +269,6 @@ class ExpiryReminderScheduler {
           expiredCount: expCount,
           expiringCount: soonCount,
         );
-
-        // Start active periodic in-app timer only for rapid testing intervals
-        if (globalIntervalMinutes <= 15) {
-          _inAppTimer = Timer.periodic(Duration(minutes: globalIntervalMinutes), (_) async {
-            await _notificationService.showExpirySummaryNotification(
-              expiredCount: expCount,
-              expiringCount: soonCount,
-            );
-          });
-        }
       }
 
       _activeRemindersCount = scheduledCount;
@@ -276,11 +281,6 @@ class ExpiryReminderScheduler {
       _lastError = e.toString();
       return _activeRemindersCount;
     }
-  }
-
-  void dispose() {
-    _inAppTimer?.cancel();
-    _inAppTimer = null;
   }
 }
 

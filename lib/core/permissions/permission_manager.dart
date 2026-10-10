@@ -22,11 +22,9 @@ class PermissionManager {
 
     final db = ref.read(databaseProvider);
     final onboardingDone = await db.getSetting(_keyOnboardingCompleted);
-    final notifService = ref.read(notificationServiceProvider);
-    final isNotifGranted = await notifService.areNotificationsEnabled();
 
-    // Show onboarding if never completed OR if notifications are completely disabled
-    if (onboardingDone != 'true' || !isNotifGranted) {
+    // Show onboarding on first launch until completed or dismissed
+    if (onboardingDone != 'true') {
       if (!context.mounted) return;
 
       await Navigator.of(context).push(

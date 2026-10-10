@@ -13,6 +13,7 @@ import '../../../core/utils/expiry_utils.dart';
 import '../../../core/widgets/metric_card.dart';
 import '../../../core/widgets/quick_action_sheet.dart';
 import '../../../core/permissions/permission_manager.dart';
+import '../../../core/permissions/notification_permission_onboarding.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/status_chip.dart';
 import '../data/dashboard_provider.dart';
@@ -164,7 +165,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                 if (_isNotificationDisabled) ...[
                   InkWell(
                     borderRadius: AppRadii.roundedMd,
-                    onTap: () => PermissionManager.checkAndPromptPermissions(context, ref),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          fullscreenDialog: true,
+                          builder: (ctx) => NotificationPermissionOnboardingScreen(
+                            onCompleted: () {
+                              Navigator.of(ctx).pop();
+                              _checkNotificationStatus();
+                              final db = ref.read(databaseProvider);
+                              ref.read(expiryReminderSchedulerProvider).reconcile(db);
+                            },
+                          ),
+                        ),
+                      );
+                    },
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
