@@ -108,6 +108,11 @@ class SupplierRepository {
     );
   }
 
+  Future<int> getSupplierBalancePaisa(int supplierId) async {
+    final swb = await getSupplierWithBalance(supplierId);
+    return swb?.balancePaisa ?? 0;
+  }
+
   Future<List<Supplier>> getAllSuppliers() {
     return _db.getAllSuppliers();
   }

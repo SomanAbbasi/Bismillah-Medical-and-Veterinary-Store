@@ -12,6 +12,7 @@ import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/primary_button.dart';
 import '../../../core/widgets/section_header.dart';
+import 'notification_diagnostics_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -27,19 +28,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   int _defaultReminderMonths = 1;
   int _notificationIntervalMinutes = 1440; // Default: Daily (1440 mins)
-  bool _isBiometricsAvailable = false;
   bool _isBusy = false;
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
-    _checkBiometrics();
-  }
-
-  Future<void> _checkBiometrics() async {
-    final available = await ref.read(appLockServiceProvider.notifier).isBiometricsAvailable();
-    if (mounted) setState(() => _isBiometricsAvailable = available);
   }
 
   Future<void> _loadSettings() async {
@@ -79,39 +73,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           backgroundColor: AppColors.success,
         ),
       );
-    }
-  }
-
-  Future<void> _setupPinDialog() async {
-    final pinController = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Set 4-Digit Security PIN'),
-        content: TextField(
-          controller: pinController,
-          keyboardType: TextInputType.number,
-          maxLength: 4,
-          obscureText: true,
-          decoration: const InputDecoration(hintText: 'Enter 4-digit PIN'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, pinController.text.trim()),
-            child: const Text('Set PIN'),
-          ),
-        ],
-      ),
-    );
-
-    if (result != null && result.length >= 4) {
-      await ref.read(appLockServiceProvider.notifier).setPin(result);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('App lock PIN enabled!'), backgroundColor: AppColors.success),
-        );
-      }
     }
   }
 
@@ -289,6 +250,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           }
                         },
                       ),
+                      const SizedBox(height: AppSpacing.md),
+                      const Divider(),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.analytics_outlined, color: AppColors.primary),
+                        title: const Text('Notification Diagnostics', style: AppTypography.labelLarge),
+                        subtitle: const Text('View permission status, scheduled alarms & send test alert', style: AppTypography.bodySmall),
+                        trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const NotificationDiagnosticsScreen(),
+                            ),
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -303,46 +280,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     borderRadius: AppRadii.roundedLg,
                     border: Border.all(color: AppColors.border),
                   ),
-                  child: Column(
-                    children: [
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('PIN Protection', style: AppTypography.labelLarge),
-                        subtitle: Text(
-                          lockState.isLockEnabled ? 'PIN lock active' : 'Lock disabled',
-                          style: AppTypography.bodySmall,
-                        ),
-                        value: lockState.isLockEnabled,
-                        activeThumbColor: AppColors.primary,
-                        onChanged: (val) async {
-                          if (val) {
-                            await _setupPinDialog();
-                          } else {
-                            final confirmed = await ConfirmationDialog.show(
-                              context: context,
-                              title: 'Disable App Lock?',
-                              message: 'Anyone holding this phone will be able to open the app.',
-                              confirmLabel: 'Disable Lock',
-                            );
-                            if (confirmed) {
-                              await ref.read(appLockServiceProvider.notifier).disableAppLock();
-                            }
-                          }
-                        },
-                      ),
-                      if (lockState.isLockEnabled && _isBiometricsAvailable) ...[
-                        const Divider(),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Fingerprint / Face Unlock', style: AppTypography.labelLarge),
-                          value: lockState.isBiometricEnabled,
-                          activeThumbColor: AppColors.primary,
-                          onChanged: (val) {
-                            ref.read(appLockServiceProvider.notifier).setBiometricsEnabled(val);
-                          },
-                        ),
-                      ],
-                    ],
+                  child: SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Phone Security Lock', style: AppTypography.labelLarge),
+                    subtitle: Text(
+                      lockState.isLockEnabled
+                          ? 'Protected with phone fingerprint, face, or device PIN'
+                          : 'Lock disabled (anyone holding this phone can open the app)',
+                      style: AppTypography.bodySmall,
+                    ),
+                    value: lockState.isLockEnabled,
+                    activeThumbColor: AppColors.primary,
+                    onChanged: (val) async {
+                      if (val) {
+                        final success = await ref.read(appLockServiceProvider.notifier).enableDeviceLock();
+                        if (!success && context.mounted) {
+                          final err = ref.read(appLockServiceProvider).lastError ??
+                              'Could not enable lock. Make sure your phone has a screen lock configured in Android Settings.';
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(err), backgroundColor: AppColors.danger),
+                          );
+                        }
+                      } else {
+                        final confirmed = await ConfirmationDialog.show(
+                          context: context,
+                          title: 'Disable App Lock?',
+                          message: 'Anyone holding this phone will be able to open BismillahStore without authentication.',
+                          confirmLabel: 'Disable Lock',
+                        );
+                        if (confirmed) {
+                          await ref.read(appLockServiceProvider.notifier).disableDeviceLock();
+                        }
+                      }
+                    },
                   ),
                 ),
                 const SizedBox(height: AppSpacing.lg),

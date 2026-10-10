@@ -20,7 +20,6 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
   final _shopNameController = TextEditingController(text: 'BismillahStore');
   final _ownerNameController = TextEditingController();
   final _phoneController = TextEditingController();
-  String _selectedCurrency = 'PKR (Rs.)';
   bool _isLoading = false;
 
   @override
@@ -41,7 +40,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
       await db.setSetting('shop_name', _shopNameController.text.trim());
       await db.setSetting('owner_name', _ownerNameController.text.trim());
       await db.setSetting('phone', _phoneController.text.trim());
-      await db.setSetting('currency', _selectedCurrency);
+      await db.setSetting('currency', 'PKR');
       await db.setSetting('onboarding_completed', 'true');
 
       if (mounted) {
@@ -119,48 +118,6 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                     hint: 'e.g. 0300-1234567',
                     keyboardType: TextInputType.phone,
                     controller: _phoneController,
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Currency',
-                        style: AppTypography.labelMedium.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.xs),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: AppRadii.roundedMd,
-                          border: Border.all(color: AppColors.border),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _selectedCurrency,
-                            isExpanded: true,
-                            items: const [
-                              DropdownMenuItem(value: 'PKR (Rs.)', child: Text('PKR - Pakistani Rupee (Rs.)')),
-                              DropdownMenuItem(value: 'USD (\$)', child: Text('USD - US Dollar (\$)')),
-                              DropdownMenuItem(value: 'EUR (€)', child: Text('EUR - Euro (€)')),
-                              DropdownMenuItem(value: 'GBP (£)', child: Text('GBP - British Pound (£)')),
-                              DropdownMenuItem(value: 'INR (₹)', child: Text('INR - Indian Rupee (₹)')),
-                              DropdownMenuItem(value: 'SAR (SR)', child: Text('SAR - Saudi Riyal (SR)')),
-                              DropdownMenuItem(value: 'AED (AED)', child: Text('AED - UAE Dirham (AED)')),
-                            ],
-                            onChanged: (val) {
-                              if (val != null) {
-                                setState(() => _selectedCurrency = val);
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                   const SizedBox(height: AppSpacing.xxl),
                   PrimaryButton(

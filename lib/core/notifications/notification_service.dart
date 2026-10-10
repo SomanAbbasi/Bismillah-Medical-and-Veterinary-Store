@@ -1,13 +1,16 @@
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
-
 class NotificationDiagnosticInfo {
   final bool areNotificationsEnabled;
   final bool canScheduleExactAlarms;
+  final bool isChannelEnabled;
+  final bool isSoundEnabled;
+  final int scheduledAlarmsCount;
   final int activeRemindersCount;
   final DateTime? nextExpectedNotification;
   final DateTime? lastReconciledAt;
@@ -16,6 +19,9 @@ class NotificationDiagnosticInfo {
   NotificationDiagnosticInfo({
     required this.areNotificationsEnabled,
     required this.canScheduleExactAlarms,
+    required this.isChannelEnabled,
+    required this.isSoundEnabled,
+    required this.scheduledAlarmsCount,
     required this.activeRemindersCount,
     this.nextExpectedNotification,
     this.lastReconciledAt,
@@ -29,6 +35,7 @@ class NotificationService {
 
   static const String expiryChannelId = 'bismillahstore_expiry_v4';
   static const String backupChannelId = 'bismillahstore_backup_v4';
+  static const MethodChannel _settingsChannel = MethodChannel('com.bismillahstore/settings_channel');
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -103,7 +110,8 @@ class NotificationService {
     _initialized = true;
   }
 
-  Future<bool> requestPermissions() async {
+  /// Requests the POST_NOTIFICATIONS permission on Android 13+ (API 33+)
+  Future<bool> requestNotificationPermission() async {
     await initialize();
     if (!Platform.isAndroid) return true;
 
@@ -111,15 +119,33 @@ class NotificationService {
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidImplementation != null) {
-      final notifGranted = await androidImplementation.requestNotificationsPermission();
-      try {
-        await androidImplementation.requestExactAlarmsPermission();
-      } catch (_) {}
-      return notifGranted ?? false;
+      final granted = await androidImplementation.requestNotificationsPermission();
+      return granted ?? false;
     }
-    return true;
+    return false;
   }
 
+  /// Requests exact alarm scheduling permission (Android 12+) by opening OS exact-alarm settings
+  Future<bool> requestExactAlarmsPermission() async {
+    await initialize();
+    if (!Platform.isAndroid) return true;
+
+    final androidImplementation = notificationsPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+
+    if (androidImplementation != null) {
+      try {
+        final granted = await androidImplementation.requestExactAlarmsPermission();
+        return granted ?? false;
+      } catch (_) {
+        await openExactAlarmSettings();
+        return false;
+      }
+    }
+    return false;
+  }
+
+  /// Checks if exact alarms can be scheduled in the OS
   Future<bool> canScheduleExactAlarms() async {
     if (!Platform.isAndroid) return false;
     final androidImplementation = notificationsPlugin
@@ -127,23 +153,88 @@ class NotificationService {
     if (androidImplementation != null) {
       try {
         final canExact = await androidImplementation.canScheduleExactNotifications();
-        return canExact ?? true;
+        return canExact ?? false;
       } catch (_) {
-        return true;
+        return false;
       }
     }
     return false;
   }
 
+  /// Checks if notifications are actually enabled in the OS
   Future<bool> areNotificationsEnabled() async {
     if (!Platform.isAndroid) return true;
     final androidImplementation = notificationsPlugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     if (androidImplementation != null) {
       final enabled = await androidImplementation.areNotificationsEnabled();
-      return enabled ?? true;
+      return enabled ?? false;
     }
-    return true;
+    return false;
+  }
+
+  /// Opens the device App Notification Settings page via native Intent
+  Future<void> openNotificationSettings() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _settingsChannel.invokeMethod('openNotificationSettings');
+    } catch (_) {}
+  }
+
+  /// Opens the device Exact Alarm Settings page via native Intent
+  Future<void> openExactAlarmSettings() async {
+    if (!Platform.isAndroid) return;
+    try {
+      final androidImplementation = notificationsPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if (androidImplementation != null) {
+        await androidImplementation.requestExactAlarmsPermission();
+        return;
+      }
+    } catch (_) {}
+    try {
+      await _settingsChannel.invokeMethod('openExactAlarmSettings');
+    } catch (_) {}
+  }
+
+  /// Opens the device Battery Optimization Settings page via native Intent
+  Future<void> openBatteryOptimizationSettings() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _settingsChannel.invokeMethod('openBatteryOptimizationSettings');
+    } catch (_) {}
+  }
+
+  /// Returns total count of pending notifications registered with the OS AlarmManager
+  Future<int> getPendingNotificationCount() async {
+    try {
+      final pending = await notificationsPlugin.pendingNotificationRequests();
+      return pending.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Inspects notification channels for enabled and sound status
+  Future<Map<String, bool>> checkChannelHealth() async {
+    if (!Platform.isAndroid) return {'channelEnabled': true, 'soundEnabled': true};
+    final androidImplementation = notificationsPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    if (androidImplementation != null) {
+      try {
+        final channels = await androidImplementation.getNotificationChannels();
+        if (channels != null && channels.isNotEmpty) {
+          final expiryChannel = channels.firstWhere(
+            (c) => c.id == expiryChannelId,
+            orElse: () => channels.first,
+          );
+          final isEnabled = expiryChannel.importance != Importance.none;
+          final hasSound = expiryChannel.playSound;
+          return {'channelEnabled': isEnabled, 'soundEnabled': hasSound};
+        }
+      } catch (_) {}
+    }
+    return {'channelEnabled': true, 'soundEnabled': true};
   }
 
   /// Fires an instant sound notification to verify system audio and alerts
@@ -155,7 +246,7 @@ class NotificationService {
       'BismillahStore Expiry Alerts',
       channelDescription: 'Timely notifications for expiring and expired medicines',
       importance: Importance.max,
-      priority: Priority.max,
+      priority: Priority.high,
       playSound: true,
       enableVibration: true,
       icon: '@mipmap/ic_launcher',
@@ -197,7 +288,7 @@ class NotificationService {
       'BismillahStore Expiry Alerts',
       channelDescription: 'Timely notifications for expiring and expired medicines',
       importance: Importance.max,
-      priority: Priority.max,
+      priority: Priority.high,
       playSound: true,
       enableVibration: true,
       icon: '@mipmap/ic_launcher',

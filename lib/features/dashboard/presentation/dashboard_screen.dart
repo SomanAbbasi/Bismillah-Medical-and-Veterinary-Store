@@ -24,18 +24,43 @@ class DashboardScreen extends ConsumerStatefulWidget {
   ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsBindingObserver {
   String _shopName = 'BismillahStore';
+  bool _isNotificationDisabled = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadShopName();
+    _checkNotificationStatus();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final db = ref.read(databaseProvider);
       ref.read(expiryReminderSchedulerProvider).reconcile(db);
       PermissionManager.checkAndPromptPermissions(context, ref);
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkNotificationStatus();
+      final db = ref.read(databaseProvider);
+      ref.read(expiryReminderSchedulerProvider).reconcile(db);
+    }
+  }
+
+  Future<void> _checkNotificationStatus() async {
+    final isGranted = await PermissionManager.areNotificationsGranted(ref);
+    if (mounted) {
+      setState(() => _isNotificationDisabled = !isGranted);
+    }
   }
 
   Future<void> _loadShopName() async {
@@ -136,6 +161,48 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             return ListView(
               padding: AppSpacing.pagePadding,
               children: [
+                if (_isNotificationDisabled) ...[
+                  InkWell(
+                    borderRadius: AppRadii.roundedMd,
+                    onTap: () => PermissionManager.checkAndPromptPermissions(context, ref),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.danger.withValues(alpha: 0.1),
+                        borderRadius: AppRadii.roundedMd,
+                        border: Border.all(color: AppColors.danger.withValues(alpha: 0.5)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 22),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Expiry Notifications Disabled',
+                                  style: AppTypography.labelMedium.copyWith(
+                                    color: AppColors.danger,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                const Text(
+                                  'Tap here to enable notifications and protect stock.',
+                                  style: TextStyle(color: AppColors.danger, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.danger),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                ],
+
                 // Quick Action Bar
                 Container(
                   padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),

@@ -12,6 +12,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/date_formatter.dart';
+import '../../../core/utils/receipt_share_helper.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/currency_field.dart';
@@ -609,6 +610,43 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                         },
                       ),
                       const SizedBox(height: AppSpacing.lg),
+
+                      // Share Receipt Action
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(44),
+                          foregroundColor: const Color(0xFF25D366),
+                          side: const BorderSide(color: Color(0xFF25D366)),
+                        ),
+                        icon: const Icon(Icons.share),
+                        label: const Text('Share Receipt (WhatsApp)'),
+                        onPressed: () async {
+                          final db = ref.read(databaseProvider);
+                          final shopName = await db.getSetting('shop_name') ?? 'Bismillah Medical & Veterinary Store';
+                          final receipt = ReceiptShareHelper.buildSupplierReceipt(
+                            storeName: shopName,
+                            supplierName: supplier.name,
+                            type: tx.type,
+                            amountPaisa: tx.amountPaisa,
+                            date: tx.date,
+                            paymentMethod: tx.paymentMethod,
+                            reference: tx.reference,
+                            note: tx.note,
+                          );
+                          if (bottomSheetCtx.mounted) {
+                            Navigator.of(bottomSheetCtx).pop();
+                            ReceiptShareHelper.showReceiptShareSheet(
+                              context: context,
+                              personName: supplier.name,
+                              phone: supplier.phone,
+                              formattedAmount: CurrencyFormatter.formatPaisa(tx.amountPaisa),
+                              typeLabel: tx.type == 'payable' ? 'Supplier Bill' : 'Supplier Payment',
+                              receiptText: receipt,
+                            );
+                          }
+                        },
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
 
                       // Edit and Delete Actions
                       Row(

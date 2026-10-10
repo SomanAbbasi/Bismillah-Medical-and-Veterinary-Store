@@ -10,7 +10,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
-import '../../../core/utils/whatsapp_helper.dart';
+import '../../../core/utils/receipt_share_helper.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/currency_field.dart';
 import '../../../core/widgets/date_field.dart';
@@ -128,54 +128,29 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
       final cust = await db.getCustomerById(_selectedCustomerId!);
 
       if (mounted && cust != null) {
-        final whatsappMsg = repo.generateWhatsAppPaymentMessage(
-          shopName: shopName,
+        final receipt = ReceiptShareHelper.buildCustomerReceipt(
+          storeName: shopName,
           customerName: cust.name,
-          paymentAmountPaisa: _amountPaisa,
+          type: 'payment',
+          amountPaisa: _amountPaisa,
+          date: _date,
           previousBalancePaisa: prevBalancePaisa,
-          remainingBalancePaisa: remainingBalancePaisa,
+          newBalancePaisa: remainingBalancePaisa,
+          paymentMethod: _paymentMethod == 'Other' ? _otherMethodController.text.trim() : _paymentMethod,
+          reference: _referenceController.text.trim().isEmpty ? null : _referenceController.text.trim(),
+          note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
         );
 
-        // Prompt user to send WhatsApp notification
-        showDialog(
+        await ReceiptShareHelper.showReceiptShareSheet(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Payment Recorded Successfully'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Remaining Balance: ${CurrencyFormatter.formatPaisa(remainingBalancePaisa)}'),
-                const SizedBox(height: 12),
-                const Text('Would you like to send a WhatsApp receipt to the customer?'),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  context.pop();
-                },
-                child: const Text('Skip'),
-              ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF25D366),
-                  foregroundColor: Colors.white,
-                ),
-                icon: const Icon(Icons.send),
-                label: const Text('Send WhatsApp'),
-                onPressed: () async {
-                  Navigator.of(ctx).pop();
-                  context.pop();
-                  await WhatsAppHelper.sendWhatsAppMessage(
-                    phone: cust.phone,
-                    message: whatsappMsg,
-                  );
-                },
-              ),
-            ],
-          ),
+          personName: cust.name,
+          phone: cust.phone,
+          formattedAmount: CurrencyFormatter.formatPaisa(_amountPaisa),
+          typeLabel: 'Customer Payment Received',
+          receiptText: receipt,
+          onDismissed: () {
+            if (mounted) context.pop();
+          },
         );
       } else if (mounted) {
         context.pop();

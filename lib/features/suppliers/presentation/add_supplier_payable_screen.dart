@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/database/database_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../core/utils/receipt_share_helper.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/currency_field.dart';
 import '../../../core/widgets/date_field.dart';
@@ -59,7 +61,13 @@ class _AddSupplierPayableScreenState extends ConsumerState<AddSupplierPayableScr
 
     setState(() => _isLoading = true);
     try {
+      final db = ref.read(databaseProvider);
       final repo = ref.read(supplierRepositoryProvider);
+      final prevBalancePaisa = await repo.getSupplierBalancePaisa(_selectedSupplierId!);
+      final newBalancePaisa = prevBalancePaisa + _amountPaisa;
+      final shopName = await db.getSetting('shop_name') ?? 'Bismillah Medical & Veterinary Store';
+      final supplier = await db.getSupplierById(_selectedSupplierId!);
+
       await repo.addTransaction(
         supplierId: _selectedSupplierId!,
         date: _date,
@@ -69,13 +77,31 @@ class _AddSupplierPayableScreenState extends ConsumerState<AddSupplierPayableScr
         note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
       );
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Payable bill of ${CurrencyFormatter.formatPaisa(_amountPaisa)} recorded'),
-            backgroundColor: AppColors.success,
-          ),
+      if (mounted && supplier != null) {
+        final receipt = ReceiptShareHelper.buildSupplierReceipt(
+          storeName: shopName,
+          supplierName: supplier.name,
+          type: 'payable',
+          amountPaisa: _amountPaisa,
+          date: _date,
+          previousBalancePaisa: prevBalancePaisa,
+          newBalancePaisa: newBalancePaisa,
+          reference: _referenceController.text.trim().isEmpty ? null : _referenceController.text.trim(),
+          note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
         );
+
+        await ReceiptShareHelper.showReceiptShareSheet(
+          context: context,
+          personName: supplier.name,
+          phone: supplier.phone,
+          formattedAmount: CurrencyFormatter.formatPaisa(_amountPaisa),
+          typeLabel: 'Supplier Bill Recorded',
+          receiptText: receipt,
+          onDismissed: () {
+            if (mounted) context.pop();
+          },
+        );
+      } else if (mounted) {
         context.pop();
       }
     } catch (e) {

@@ -5,6 +5,7 @@ import 'core/database/database_provider.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/notifications/expiry_reminder_scheduler.dart';
 import 'core/routing/app_router.dart';
+import 'core/security/app_lock_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/settings/presentation/app_lock_screen.dart';
 
@@ -56,7 +57,10 @@ class _BismillahStoreAppState extends ConsumerState<BismillahStoreApp> with Widg
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      ref.read(appLockServiceProvider.notifier).onAppResumed();
       _reconcileReminders();
+    } else if (state == AppLifecycleState.paused) {
+      ref.read(appLockServiceProvider.notifier).onAppPaused();
     }
   }
 

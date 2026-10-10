@@ -5,28 +5,28 @@ import 'package:local_auth/local_auth.dart';
 
 class AppLockState {
   final bool isLockEnabled;
-  final bool isBiometricEnabled;
-  final bool hasPin;
   final bool isUnlocked;
+  final bool isDeviceSecurityAvailable;
+  final String? lastError;
 
   const AppLockState({
     required this.isLockEnabled,
-    required this.isBiometricEnabled,
-    required this.hasPin,
     required this.isUnlocked,
+    required this.isDeviceSecurityAvailable,
+    this.lastError,
   });
 
   AppLockState copyWith({
     bool? isLockEnabled,
-    bool? isBiometricEnabled,
-    bool? hasPin,
     bool? isUnlocked,
+    bool? isDeviceSecurityAvailable,
+    String? lastError,
   }) {
     return AppLockState(
       isLockEnabled: isLockEnabled ?? this.isLockEnabled,
-      isBiometricEnabled: isBiometricEnabled ?? this.isBiometricEnabled,
-      hasPin: hasPin ?? this.hasPin,
       isUnlocked: isUnlocked ?? this.isUnlocked,
+      isDeviceSecurityAvailable: isDeviceSecurityAvailable ?? this.isDeviceSecurityAvailable,
+      lastError: lastError,
     );
   }
 }
@@ -35,109 +35,114 @@ class AppLockService extends StateNotifier<AppLockState> {
   final LocalAuthentication _localAuth = LocalAuthentication();
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
-  static const _keyLockEnabled = 'pl_app_lock_enabled';
-  static const _keyBiometricEnabled = 'pl_biometric_enabled';
-  static const _keyPin = 'pl_app_pin';
+  static const _keyLockEnabled = 'pl_device_lock_enabled';
+  DateTime? _pausedAt;
 
   AppLockService()
       : super(const AppLockState(
           isLockEnabled: false,
-          isBiometricEnabled: false,
-          hasPin: false,
           isUnlocked: true,
+          isDeviceSecurityAvailable: true,
         )) {
     _loadState();
   }
 
   Future<void> _loadState() async {
     final lockEnabledStr = await _storage.read(key: _keyLockEnabled);
-    final bioEnabledStr = await _storage.read(key: _keyBiometricEnabled);
-    final pinStr = await _storage.read(key: _keyPin);
-
     final lockEnabled = lockEnabledStr == 'true';
-    final bioEnabled = bioEnabledStr == 'true';
-    final hasPin = pinStr != null && pinStr.isNotEmpty;
+    final hasSecurity = await isDeviceSecurityAvailable();
 
     state = AppLockState(
       isLockEnabled: lockEnabled,
-      isBiometricEnabled: bioEnabled,
-      hasPin: hasPin,
       isUnlocked: !lockEnabled, // If lock is disabled, start unlocked
+      isDeviceSecurityAvailable: hasSecurity,
     );
   }
 
-  Future<bool> isBiometricsAvailable() async {
+  Future<bool> isDeviceSecurityAvailable() async {
     try {
-      final canCheck = await _localAuth.canCheckBiometrics;
       final isSupported = await _localAuth.isDeviceSupported();
-      return canCheck && isSupported;
+      final canCheck = await _localAuth.canCheckBiometrics;
+      return isSupported || canCheck;
     } catch (_) {
       return false;
     }
   }
 
-  Future<bool> verifyPin(String enteredPin) async {
-    final storedPin = await _storage.read(key: _keyPin);
-    if (storedPin == enteredPin) {
-      state = state.copyWith(isUnlocked: true);
+  /// Authenticate using device biometrics or device PIN/password/pattern fallback
+  Future<bool> authenticate() async {
+    try {
+      final isSecured = await isDeviceSecurityAvailable();
+      if (!isSecured) {
+        state = state.copyWith(
+          lastError: 'No screen lock or biometrics configured on this phone. Please set up a screen lock in Android Settings.',
+        );
+        return false;
+      }
+
+      final authenticated = await _localAuth.authenticate(
+        localizedReason: 'Authenticate with fingerprint, face, or device PIN to open BismillahStore',
+        options: const AuthenticationOptions(
+          stickyAuth: true,
+          biometricOnly: false, // Allows Android system device PIN/pattern/password fallback
+        ),
+      );
+
+      if (authenticated) {
+        state = state.copyWith(isUnlocked: true, lastError: null);
+      } else {
+        state = state.copyWith(lastError: 'Authentication was cancelled.');
+      }
+      return authenticated;
+    } on PlatformException catch (e) {
+      String msg = 'Authentication error: ${e.message ?? e.code}';
+      if (e.code == 'NotAvailable' || e.code == 'PasscodeNotSet') {
+        msg = 'Please set up a screen lock (PIN, Pattern, or Fingerprint) in Android Settings.';
+      }
+      state = state.copyWith(lastError: msg);
+      return false;
+    } catch (e) {
+      state = state.copyWith(lastError: 'Authentication error: $e');
+      return false;
+    }
+  }
+
+  Future<bool> enableDeviceLock() async {
+    final success = await authenticate();
+    if (success) {
+      await _storage.write(key: _keyLockEnabled, value: 'true');
+      state = state.copyWith(isLockEnabled: true, isUnlocked: true, lastError: null);
       return true;
     }
     return false;
   }
 
-  Future<bool> authenticateWithBiometrics() async {
-    try {
-      final authenticated = await _localAuth.authenticate(
-        localizedReason: 'Please authenticate to unlock BismillahStore',
-        options: const AuthenticationOptions(
-          stickyAuth: true,
-          biometricOnly: false,
-        ),
-      );
-      if (authenticated) {
-        state = state.copyWith(isUnlocked: true);
-      }
-      return authenticated;
-    } on PlatformException {
-      return false;
+  Future<void> disableDeviceLock() async {
+    await _storage.delete(key: _keyLockEnabled);
+    state = state.copyWith(isLockEnabled: false, isUnlocked: true, lastError: null);
+  }
+
+  void onAppPaused() {
+    if (state.isLockEnabled) {
+      _pausedAt = DateTime.now();
     }
   }
 
-  Future<void> setPin(String pin) async {
-    await _storage.write(key: _keyPin, value: pin);
-    await _storage.write(key: _keyLockEnabled, value: 'true');
-    state = state.copyWith(
-      isLockEnabled: true,
-      hasPin: true,
-      isUnlocked: true,
-    );
+  void onAppResumed() {
+    if (state.isLockEnabled && _pausedAt != null) {
+      final elapsed = DateTime.now().difference(_pausedAt!);
+      // Lock if app was in background for 30+ seconds
+      if (elapsed.inSeconds >= 30) {
+        state = state.copyWith(isUnlocked: false);
+      }
+      _pausedAt = null;
+    }
   }
 
-  Future<void> setBiometricsEnabled(bool enabled) async {
-    await _storage.write(key: _keyBiometricEnabled, value: enabled.toString());
-    state = state.copyWith(isBiometricEnabled: enabled);
-  }
-
-  Future<void> disableAppLock() async {
-    await _storage.delete(key: _keyPin);
-    await _storage.write(key: _keyLockEnabled, value: 'false');
-    await _storage.write(key: _keyBiometricEnabled, value: 'false');
-    state = const AppLockState(
-      isLockEnabled: false,
-      isBiometricEnabled: false,
-      hasPin: false,
-      isUnlocked: true,
-    );
-  }
-
-  void lockApp() {
+  void lockNow() {
     if (state.isLockEnabled) {
       state = state.copyWith(isUnlocked: false);
     }
-  }
-
-  void unlock() {
-    state = state.copyWith(isUnlocked: true);
   }
 }
 
