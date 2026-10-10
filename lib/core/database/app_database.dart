@@ -480,17 +480,22 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  Future<void> clearAllData() {
-    return transaction(() async {
-      await delete(sales).go();
-      await delete(customerTransactions).go();
-      await delete(customers).go();
-      await delete(supplierTransactions).go();
-      await delete(suppliers).go();
-      await delete(medicines).go();
-      await delete(expenses).go();
-      await delete(attachments).go();
-      await delete(inAppNotifications).go();
-    });
+  Future<void> clearAllData() async {
+    await customStatement('PRAGMA foreign_keys = OFF;');
+    try {
+      await transaction(() async {
+        await delete(attachments).go();
+        await delete(inAppNotifications).go();
+        await delete(sales).go();
+        await delete(customerTransactions).go();
+        await delete(customers).go();
+        await delete(supplierTransactions).go();
+        await delete(suppliers).go();
+        await delete(medicines).go();
+        await delete(expenses).go();
+      });
+    } finally {
+      await customStatement('PRAGMA foreign_keys = ON;');
+    }
   }
 }

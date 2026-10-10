@@ -100,7 +100,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
 
       final prevBalancePaisa = await repo.getCustomerBalance(_selectedCustomerId!);
 
-      await repo.recordPayment(
+      final txId = await repo.recordPayment(
         customerId: _selectedCustomerId!,
         amountPaisa: _amountPaisa,
         date: _date,
@@ -114,8 +114,8 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
       if (_attachedProof != null) {
         await db.insertAttachment(
           AttachmentsCompanion(
-            entityType: const drift.Value('customer'),
-            entityId: drift.Value(_selectedCustomerId!),
+            entityType: const drift.Value('customer_transaction'),
+            entityId: drift.Value(txId),
             filePath: drift.Value(_attachedProof!.relativePath),
             fileName: drift.Value(_attachedProof!.originalName),
             mimeType: drift.Value(_attachedProof!.mimeType),

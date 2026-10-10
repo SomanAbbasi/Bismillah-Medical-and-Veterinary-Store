@@ -1,9 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timezone/timezone.dart' as tz;
 import '../database/app_database.dart';
-
 import '../utils/date_formatter.dart';
 import 'notification_service.dart';
 
@@ -13,6 +13,7 @@ class ExpiryReminderScheduler {
   String? _lastError;
   int _activeRemindersCount = 0;
   DateTime? _nextExpectedNotification;
+  Timer? _inAppTimer;
 
   ExpiryReminderScheduler(this._notificationService);
 
@@ -41,6 +42,10 @@ class ExpiryReminderScheduler {
 
       int scheduledCount = 0;
       DateTime? earliestNext;
+
+      // Cancel any active in-app testing timer
+      _inAppTimer?.cancel();
+      _inAppTimer = null;
 
       for (final med in medicines) {
         if (med.isDeleted || med.isDraft) {
@@ -82,7 +87,7 @@ class ExpiryReminderScheduler {
         DateTime scheduledTime;
 
         if (intervalMinutes < 1440) {
-          // Sub-daily recurrence (e.g. every 60 min, 120 min)
+          // Sub-daily recurrence (e.g. every 1 min, 15 min, 60 min)
           scheduledTime = now.add(Duration(minutes: intervalMinutes));
         } else {
           // Daily or multi-day recurrence
@@ -105,7 +110,7 @@ class ExpiryReminderScheduler {
         var tzScheduled = tz.TZDateTime.from(scheduledTime, tz.local);
         final tzNow = tz.TZDateTime.now(tz.local);
         if (tzScheduled.isBefore(tzNow)) {
-          tzScheduled = tzNow.add(const Duration(minutes: 2));
+          tzScheduled = tzNow.add(const Duration(minutes: 1));
         }
 
         final batchSuffix = (med.batchNumber != null && med.batchNumber!.isNotEmpty) ? ' (Batch: ${med.batchNumber})' : '';
@@ -116,7 +121,7 @@ class ExpiryReminderScheduler {
             ? '${med.name} expired on ${DateFormatter.formatDate(med.expiryDate)}. Remove from store shelves immediately.'
             : '${med.name} expires on ${DateFormatter.formatDate(med.expiryDate)}. Check stock and prioritize sales.';
 
-        final androidDetails = AndroidNotificationDetails(
+        const androidDetails = AndroidNotificationDetails(
           NotificationService.expiryChannelId,
           'BismillahStore Expiry Alerts',
           channelDescription: 'Timely notifications for expiring and expired medicines',
@@ -132,40 +137,70 @@ class ExpiryReminderScheduler {
         await _notificationService.cancelNotification(med.id);
 
         if (Platform.isAndroid) {
-          if (intervalMinutes == 1) {
-            // Schedule repeating 1-minute burst for fast testing
-            for (int i = 1; i <= 5; i++) {
+          final scheduleMode = canExact
+              ? AndroidScheduleMode.alarmClock
+              : AndroidScheduleMode.inexactAllowWhileIdle;
+
+          if (intervalMinutes <= 1) {
+            // Schedule repeating 1-minute burst (up to 10 minutes) for fast testing
+            for (int i = 1; i <= 10; i++) {
               final burstId = med.id * 1000 + i;
               await _notificationService.cancelNotification(burstId);
+              try {
+                await _notificationService.notificationsPlugin.zonedSchedule(
+                  burstId,
+                  title,
+                  body,
+                  tzNow.add(Duration(minutes: i)),
+                  const NotificationDetails(android: androidDetails),
+                  androidScheduleMode: scheduleMode,
+                  uiLocalNotificationDateInterpretation:
+                      UILocalNotificationDateInterpretation.absoluteTime,
+                  payload: 'medicine:${med.id}',
+                );
+              } catch (_) {
+                // Inexact fallback if alarmClock is restricted by OEM
+                await _notificationService.notificationsPlugin.zonedSchedule(
+                  burstId,
+                  title,
+                  body,
+                  tzNow.add(Duration(minutes: i)),
+                  const NotificationDetails(android: androidDetails),
+                  androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+                  uiLocalNotificationDateInterpretation:
+                      UILocalNotificationDateInterpretation.absoluteTime,
+                  payload: 'medicine:${med.id}',
+                );
+              }
+            }
+          } else {
+            try {
               await _notificationService.notificationsPlugin.zonedSchedule(
-                burstId,
+                med.id,
                 title,
                 body,
-                tzNow.add(Duration(minutes: i)),
-                NotificationDetails(android: androidDetails),
-                androidScheduleMode: canExact
-                    ? AndroidScheduleMode.exactAllowWhileIdle
-                    : AndroidScheduleMode.inexactAllowWhileIdle,
+                tzScheduled,
+                const NotificationDetails(android: androidDetails),
+                androidScheduleMode: scheduleMode,
                 uiLocalNotificationDateInterpretation:
                     UILocalNotificationDateInterpretation.absoluteTime,
+                matchDateTimeComponents: intervalMinutes == 1440 ? DateTimeComponents.time : null,
+                payload: 'medicine:${med.id}',
+              );
+            } catch (_) {
+              await _notificationService.notificationsPlugin.zonedSchedule(
+                med.id,
+                title,
+                body,
+                tzScheduled,
+                const NotificationDetails(android: androidDetails),
+                androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+                uiLocalNotificationDateInterpretation:
+                    UILocalNotificationDateInterpretation.absoluteTime,
+                matchDateTimeComponents: intervalMinutes == 1440 ? DateTimeComponents.time : null,
                 payload: 'medicine:${med.id}',
               );
             }
-          } else {
-            await _notificationService.notificationsPlugin.zonedSchedule(
-              med.id,
-              title,
-              body,
-              tzScheduled,
-              NotificationDetails(android: androidDetails),
-              androidScheduleMode: canExact
-                  ? AndroidScheduleMode.exactAllowWhileIdle
-                  : AndroidScheduleMode.inexactAllowWhileIdle,
-              uiLocalNotificationDateInterpretation:
-                  UILocalNotificationDateInterpretation.absoluteTime,
-              matchDateTimeComponents: intervalMinutes == 1440 ? DateTimeComponents.time : null,
-              payload: 'medicine:${med.id}',
-            );
           }
         }
 
@@ -199,6 +234,16 @@ class ExpiryReminderScheduler {
           expiredCount: expCount,
           expiringCount: soonCount,
         );
+
+        // Start active periodic in-app timer if interval is short (e.g. 1 min or 15 mins)
+        if (globalIntervalMinutes <= 15) {
+          _inAppTimer = Timer.periodic(Duration(minutes: globalIntervalMinutes), (_) async {
+            await _notificationService.showExpirySummaryNotification(
+              expiredCount: expCount,
+              expiringCount: soonCount,
+            );
+          });
+        }
       }
 
       _activeRemindersCount = scheduledCount;

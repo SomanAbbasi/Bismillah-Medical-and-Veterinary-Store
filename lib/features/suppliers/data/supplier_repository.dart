@@ -28,41 +28,54 @@ class SupplierRepository {
   SupplierRepository(this._db);
 
   Stream<List<SupplierWithBalance>> watchSuppliersWithBalances() {
-    return _db.watchSuppliers().asyncMap((suppliers) async {
-      final result = <SupplierWithBalance>[];
+    final query = _db.select(_db.suppliers)..where((tbl) => tbl.isDeleted.equals(false));
+    final joined = query.join([
+      drift.leftOuterJoin(
+        _db.supplierTransactions,
+        _db.supplierTransactions.supplierId.equalsExp(_db.suppliers.id) &
+        _db.supplierTransactions.isDeleted.equals(false),
+      ),
+    ]);
 
-      for (final s in suppliers) {
-        final txs = await _db.getSupplierTransactions(s.id);
+    return joined.watch().map((rows) {
+      final Map<int, Supplier> supplierMap = {};
+      final Map<int, int> payableMap = {};
+      final Map<int, int> paidMap = {};
+      final Map<int, DateTime> lastDateMap = {};
 
-        int totalPayable = 0;
-        int totalPaid = 0;
-        DateTime? lastTxDate;
+      for (final row in rows) {
+        final supplier = row.readTable(_db.suppliers);
+        final tx = row.readTableOrNull(_db.supplierTransactions);
 
-        for (final tx in txs) {
-          if (lastTxDate == null || tx.date.isAfter(lastTxDate)) {
-            lastTxDate = tx.date;
-          }
+        supplierMap[supplier.id] = supplier;
+        payableMap.putIfAbsent(supplier.id, () => 0);
+        paidMap.putIfAbsent(supplier.id, () => 0);
+
+        if (tx != null) {
           if (tx.type == 'payable') {
-            totalPayable += tx.amountPaisa;
+            payableMap[supplier.id] = payableMap[supplier.id]! + tx.amountPaisa;
           } else if (tx.type == 'payment') {
-            totalPaid += tx.amountPaisa;
+            paidMap[supplier.id] = paidMap[supplier.id]! + tx.amountPaisa;
+          }
+
+          final currentLast = lastDateMap[supplier.id];
+          if (currentLast == null || tx.date.isAfter(currentLast)) {
+            lastDateMap[supplier.id] = tx.date;
           }
         }
-
-        final balance = totalPayable - totalPaid;
-
-        result.add(
-          SupplierWithBalance(
-            supplier: s,
-            balancePaisa: balance,
-            totalPayablePaisa: totalPayable,
-            totalPaidPaisa: totalPaid,
-            lastTransactionDate: lastTxDate,
-          ),
-        );
       }
 
-      return result;
+      return supplierMap.values.map((s) {
+        final totalPayable = payableMap[s.id] ?? 0;
+        final totalPaid = paidMap[s.id] ?? 0;
+        return SupplierWithBalance(
+          supplier: s,
+          balancePaisa: totalPayable - totalPaid,
+          totalPayablePaisa: totalPayable,
+          totalPaidPaisa: totalPaid,
+          lastTransactionDate: lastDateMap[s.id],
+        );
+      }).toList();
     });
   }
 

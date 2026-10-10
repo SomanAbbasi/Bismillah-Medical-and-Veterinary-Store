@@ -27,26 +27,38 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin notificationsPlugin = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
 
-  static const String expiryChannelId = 'pharmaledger_expiry_channel';
-  static const String backupChannelId = 'pharmaledger_backup_channel';
+  static const String expiryChannelId = 'bismillahstore_expiry_v4';
+  static const String backupChannelId = 'bismillahstore_backup_v4';
 
   Future<void> initialize() async {
     if (_initialized) return;
 
-    // 1. Initialize timezones
+    // 1. Initialize timezones with modern offset matching
     tz.initializeTimeZones();
     try {
       final now = DateTime.now();
-      final offset = now.timeZoneOffset;
-      // Find matching location or default
+      final offsetMs = now.timeZoneOffset.inMilliseconds;
+      tz.Location? matched;
       for (final loc in tz.timeZoneDatabase.locations.values) {
-        if (loc.currentTimeZone.offset == offset.inMilliseconds) {
-          tz.setLocalLocation(loc);
+        if (loc.timeZone(now.millisecondsSinceEpoch).offset == offsetMs) {
+          matched = loc;
           break;
         }
       }
+      if (matched != null) {
+        tz.setLocalLocation(matched);
+      } else if (offsetMs == 18000000) {
+        // Fallback for Pakistan Standard Time (PKT, UTC+5)
+        tz.setLocalLocation(tz.getLocation('Asia/Karachi'));
+      } else {
+        tz.setLocalLocation(tz.UTC);
+      }
     } catch (_) {
-      tz.setLocalLocation(tz.UTC);
+      try {
+        tz.setLocalLocation(tz.getLocation('Asia/Karachi'));
+      } catch (_) {
+        tz.setLocalLocation(tz.UTC);
+      }
     }
 
     // 2. Initialize local notifications
@@ -69,7 +81,7 @@ class NotificationService {
         const AndroidNotificationChannel(
           expiryChannelId,
           'BismillahStore Expiry Alerts',
-          description: 'Timely system notifications for expiring and expired medicines',
+          description: 'Audible high-priority alerts for expiring and expired medicines',
           importance: Importance.max,
           playSound: true,
           enableVibration: true,
@@ -99,8 +111,11 @@ class NotificationService {
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidImplementation != null) {
-      final granted = await androidImplementation.requestNotificationsPermission();
-      return granted ?? false;
+      final notifGranted = await androidImplementation.requestNotificationsPermission();
+      try {
+        await androidImplementation.requestExactAlarmsPermission();
+      } catch (_) {}
+      return notifGranted ?? false;
     }
     return true;
   }
@@ -110,8 +125,12 @@ class NotificationService {
     final androidImplementation = notificationsPlugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     if (androidImplementation != null) {
-      final canExact = await androidImplementation.requestExactAlarmsPermission();
-      return canExact ?? true;
+      try {
+        final canExact = await androidImplementation.canScheduleExactNotifications();
+        return canExact ?? true;
+      } catch (_) {
+        return true;
+      }
     }
     return false;
   }

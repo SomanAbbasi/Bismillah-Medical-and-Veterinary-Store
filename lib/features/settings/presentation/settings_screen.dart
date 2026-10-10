@@ -8,7 +8,6 @@ import '../../../core/security/app_lock_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
-import '../../../core/utils/date_formatter.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/primary_button.dart';
@@ -31,26 +30,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _isBiometricsAvailable = false;
   bool _isBusy = false;
 
-  NotificationDiagnosticInfo? _diagnostics;
-
   @override
   void initState() {
     super.initState();
     _loadSettings();
     _checkBiometrics();
-    _loadDiagnostics();
   }
 
   Future<void> _checkBiometrics() async {
     final available = await ref.read(appLockServiceProvider.notifier).isBiometricsAvailable();
     if (mounted) setState(() => _isBiometricsAvailable = available);
-  }
-
-  Future<void> _loadDiagnostics() async {
-    final db = ref.read(databaseProvider);
-    final scheduler = ref.read(expiryReminderSchedulerProvider);
-    final diag = await scheduler.getDiagnostics(db);
-    if (mounted) setState(() => _diagnostics = diag);
   }
 
   Future<void> _loadSettings() async {
@@ -80,31 +69,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await db.setSetting('default_reminder_months', _defaultReminderMonths.toString());
     await db.setSetting('notification_interval_minutes', _notificationIntervalMinutes.toString());
 
-    // Reconcile notifications after changing preferences
+    // Reconcile notifications immediately
     await ref.read(expiryReminderSchedulerProvider).reconcile(db);
-    await _loadDiagnostics();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Settings saved successfully!'),
-          backgroundColor: AppColors.success,
-        ),
-      );
-    }
-  }
-
-  Future<void> _rescheduleNow() async {
-    setState(() => _isBusy = true);
-    final db = ref.read(databaseProvider);
-    final scheduler = ref.read(expiryReminderSchedulerProvider);
-    final count = await scheduler.reconcile(db);
-    await _loadDiagnostics();
-    if (mounted) {
-      setState(() => _isBusy = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Reconciled and scheduled $count active medicine reminder alarms.'),
           backgroundColor: AppColors.success,
         ),
       );
@@ -148,26 +119,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final confirmed = await ConfirmationDialog.show(
       context: context,
       title: 'Clear Store Records?',
-      message: 'This will permanently remove medicines, sales, and ledger records.',
+      message: 'This will permanently remove medicines, sales, expenses, and ledger records.',
       confirmLabel: 'Delete All Records',
       isDestructive: true,
     );
     if (!confirmed || !mounted) return;
 
     setState(() => _isBusy = true);
-    final db = ref.read(databaseProvider);
-    await db.clearAllData();
-    await ref.read(notificationServiceProvider).cancelAll();
-    await _loadDiagnostics();
+    try {
+      final db = ref.read(databaseProvider);
+      await db.clearAllData();
+      await ref.read(notificationServiceProvider).cancelAll();
 
-    if (mounted) {
-      setState(() => _isBusy = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('All records cleared successfully.'),
-          backgroundColor: AppColors.danger,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('All records cleared successfully.'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to clear records: $e'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isBusy = false);
+      }
     }
   }
 
@@ -248,8 +232,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           DropdownMenuItem(value: 3, child: Text('90 Days (3 Months Before)')),
                           DropdownMenuItem(value: 6, child: Text('180 Days (6 Months Before)')),
                         ],
-                        onChanged: (val) {
-                          if (val != null) setState(() => _defaultReminderMonths = val);
+                        onChanged: (val) async {
+                          if (val != null) {
+                            setState(() => _defaultReminderMonths = val);
+                            final db = ref.read(databaseProvider);
+                            await db.setSetting('default_reminder_months', val.toString());
+                            await ref.read(expiryReminderSchedulerProvider).reconcile(db);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Expiry alert preference updated!'),
+                                  backgroundColor: AppColors.success,
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          }
                         },
                       ),
                       const SizedBox(height: AppSpacing.md),
@@ -263,8 +261,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         initialValue: _notificationIntervalMinutes,
                         decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 12)),
                         items: const [
-                          DropdownMenuItem(value: 1, child: Text('Every 1 Minute (Ultra Fast Test ⚡)')),
-                          DropdownMenuItem(value: 15, child: Text('Every 15 Minutes (Rapid / Testing)')),
+                          DropdownMenuItem(value: 1, child: Text('Every 1 Minute (Fast Testing ⚡)')),
+                          DropdownMenuItem(value: 15, child: Text('Every 15 Minutes')),
                           DropdownMenuItem(value: 30, child: Text('Every 30 Minutes')),
                           DropdownMenuItem(value: 60, child: Text('Every 1 Hour (60 Minutes)')),
                           DropdownMenuItem(value: 120, child: Text('Every 2 Hours')),
@@ -273,97 +271,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           DropdownMenuItem(value: 2880, child: Text('Every 2 Days')),
                           DropdownMenuItem(value: 10080, child: Text('Weekly (Every 7 Days)')),
                         ],
-                        onChanged: (val) {
-                          if (val != null) setState(() => _notificationIntervalMinutes = val);
-                        },
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.primary,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          onPressed: () async {
-                            await ref.read(notificationServiceProvider).testSoundNotification();
+                        onChanged: (val) async {
+                          if (val != null) {
+                            setState(() => _notificationIntervalMinutes = val);
+                            final db = ref.read(databaseProvider);
+                            await db.setSetting('notification_interval_minutes', val.toString());
+                            await ref.read(expiryReminderSchedulerProvider).reconcile(db);
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('🔔 Notification sound triggered! Check system status bar.'),
-                                  backgroundColor: AppColors.primary,
+                                  content: Text('Notification interval updated and active!'),
+                                  backgroundColor: AppColors.success,
+                                  duration: Duration(seconds: 2),
                                 ),
                               );
                             }
-                          },
-                          icon: const Icon(Icons.volume_up_outlined),
-                          label: const Text('Test Notification with Sound'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.lg),
-
-                // Diagnostic & Reliability Card
-                const SectionHeader(title: 'Notification Reliability & Diagnostics'),
-                Container(
-                  padding: AppSpacing.cardPadding,
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: AppRadii.roundedLg,
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _DiagnosticRow(
-                        label: 'Notification Permission',
-                        value: (_diagnostics?.areNotificationsEnabled ?? true) ? 'Granted ✅' : 'Denied ❌',
-                        isGood: _diagnostics?.areNotificationsEnabled ?? true,
-                      ),
-                      const Divider(height: 16),
-                      _DiagnosticRow(
-                        label: 'Android Alarm Scheduling',
-                        value: (_diagnostics?.canScheduleExactAlarms ?? false) ? 'Exact Alarms Allowed ✅' : 'Inexact Idle Mode (Safe fallback) ℹ️',
-                        isGood: true,
-                      ),
-                      const Divider(height: 16),
-                      _DiagnosticRow(
-                        label: 'Active Scheduled Alarms',
-                        value: '${_diagnostics?.activeRemindersCount ?? 0} medicines',
-                        isGood: true,
-                      ),
-                      const Divider(height: 16),
-                      _DiagnosticRow(
-                        label: 'Last Schedule Sync',
-                        value: _diagnostics?.lastReconciledAt != null
-                            ? DateFormatter.formatDate(_diagnostics!.lastReconciledAt!)
-                            : 'Just initialized',
-                        isGood: true,
-                      ),
-                      if (_diagnostics?.nextExpectedNotification != null) ...[
-                        const Divider(height: 16),
-                        _DiagnosticRow(
-                          label: 'Next Scheduled Alert',
-                          value: DateFormatter.formatDate(_diagnostics!.nextExpectedNotification!),
-                          isGood: true,
-                        ),
-                      ],
-                      const SizedBox(height: AppSpacing.md),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primarySubtle,
-                            foregroundColor: AppColors.primary,
-                            elevation: 0,
-                          ),
-                          onPressed: _rescheduleNow,
-                          icon: const Icon(Icons.sync),
-                          label: const Text('Reschedule Reminders Now'),
-                        ),
+                          }
+                        },
                       ),
                     ],
                   ),
@@ -493,35 +417,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const SizedBox(height: AppSpacing.huge),
               ],
             ),
-    );
-  }
-}
-
-class _DiagnosticRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool isGood;
-
-  const _DiagnosticRow({
-    required this.label,
-    required this.value,
-    required this.isGood,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary)),
-        Text(
-          value,
-          style: AppTypography.bodySmall.copyWith(
-            fontWeight: FontWeight.w600,
-            color: isGood ? AppColors.textPrimary : AppColors.danger,
-          ),
-        ),
-      ],
     );
   }
 }

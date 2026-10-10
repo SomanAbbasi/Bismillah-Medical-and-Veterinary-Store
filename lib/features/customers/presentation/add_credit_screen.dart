@@ -95,7 +95,7 @@ class _AddCreditScreenState extends ConsumerState<AddCreditScreen> {
 
       final prevBalancePaisa = await repo.getCustomerBalance(_selectedCustomerId!);
 
-      await repo.addCredit(
+      final txId = await repo.addCredit(
         customerId: _selectedCustomerId!,
         amountPaisa: _amountPaisa,
         date: _date,
@@ -107,8 +107,8 @@ class _AddCreditScreenState extends ConsumerState<AddCreditScreen> {
       if (_attachedProof != null) {
         await db.insertAttachment(
           AttachmentsCompanion(
-            entityType: const drift.Value('customer'),
-            entityId: drift.Value(_selectedCustomerId!),
+            entityType: const drift.Value('customer_transaction'),
+            entityId: drift.Value(txId),
             filePath: drift.Value(_attachedProof!.relativePath),
             fileName: drift.Value(_attachedProof!.originalName),
             mimeType: drift.Value(_attachedProof!.mimeType),

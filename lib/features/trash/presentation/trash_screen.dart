@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/database_provider.dart';
+import '../../../core/notifications/expiry_reminder_scheduler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
@@ -11,7 +12,7 @@ import '../../../core/widgets/empty_state.dart';
 
 class DeletedItemModel {
   final int id;
-  final String entityType; // 'medicine', 'sale', 'expense', 'transaction', 'customer'
+  final String entityType; // 'medicine', 'sale', 'expense', 'transaction', 'customer', 'supplier', 'supplier_transaction'
   final String title;
   final String subtitle;
   final DateTime? deletedAt;
@@ -95,6 +96,30 @@ final deletedItemsFutureProvider = FutureProvider<List<DeletedItemModel>>((ref) 
     ));
   }
 
+  // Deleted Suppliers
+  final suppliers = await (db.select(db.suppliers)..where((tbl) => tbl.isDeleted.equals(true))).get();
+  for (final s in suppliers) {
+    items.add(DeletedItemModel(
+      id: s.id,
+      entityType: 'supplier',
+      title: s.name,
+      subtitle: 'Supplier • Phone: ${s.phone}',
+      deletedAt: s.deletedAt,
+    ));
+  }
+
+  // Deleted Supplier Transactions
+  final supTxs = await (db.select(db.supplierTransactions)..where((tbl) => tbl.isDeleted.equals(true))).get();
+  for (final st in supTxs) {
+    items.add(DeletedItemModel(
+      id: st.id,
+      entityType: 'supplier_transaction',
+      title: '${st.type == "payable" ? "Payable Bill" : "Supplier Payment"} (${CurrencyFormatter.formatPaisa(st.amountPaisa)})',
+      subtitle: '${DateFormatter.formatDate(st.date)}${st.reference != null ? " • Ref: ${st.reference}" : ""}',
+      deletedAt: st.deletedAt,
+    ));
+  }
+
   items.sort((a, b) => (b.deletedAt ?? DateTime.now()).compareTo(a.deletedAt ?? DateTime.now()));
   return items;
 });
@@ -114,6 +139,7 @@ class TrashScreen extends ConsumerWidget {
     final db = ref.read(databaseProvider);
     if (item.entityType == 'medicine') {
       await db.restoreMedicine(item.id);
+      await ref.read(expiryReminderSchedulerProvider).reconcile(db);
     } else if (item.entityType == 'sale') {
       await db.restoreSale(item.id);
     } else if (item.entityType == 'expense') {
@@ -122,6 +148,10 @@ class TrashScreen extends ConsumerWidget {
       await db.restoreCustomer(item.id);
     } else if (item.entityType == 'transaction') {
       await db.restoreCustomerTransaction(item.id);
+    } else if (item.entityType == 'supplier') {
+      await db.restoreSupplier(item.id);
+    } else if (item.entityType == 'supplier_transaction') {
+      await db.restoreSupplierTransaction(item.id);
     }
 
     ref.invalidate(deletedItemsFutureProvider);
@@ -157,6 +187,10 @@ class TrashScreen extends ConsumerWidget {
       await (db.delete(db.customers)..where((tbl) => tbl.id.equals(item.id))).go();
     } else if (item.entityType == 'transaction') {
       await (db.delete(db.customerTransactions)..where((tbl) => tbl.id.equals(item.id))).go();
+    } else if (item.entityType == 'supplier') {
+      await (db.delete(db.suppliers)..where((tbl) => tbl.id.equals(item.id))).go();
+    } else if (item.entityType == 'supplier_transaction') {
+      await (db.delete(db.supplierTransactions)..where((tbl) => tbl.id.equals(item.id))).go();
     }
 
     ref.invalidate(deletedItemsFutureProvider);

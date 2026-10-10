@@ -35,30 +35,51 @@ class CustomerRepository {
   CustomerRepository(this._db);
 
   Stream<List<CustomerWithBalance>> watchCustomersWithBalances() {
-    return _db.watchCustomers().asyncMap((customers) async {
-      final List<CustomerWithBalance> result = [];
-      for (final cust in customers) {
-        final txs = await _db.getCustomerTransactions(cust.id);
-        int balance = 0;
-        DateTime? lastDate;
+    final query = _db.select(_db.customers)..where((tbl) => tbl.isDeleted.equals(false));
+    final joined = query.join([
+      drift.leftOuterJoin(
+        _db.customerTransactions,
+        _db.customerTransactions.customerId.equalsExp(_db.customers.id) &
+        _db.customerTransactions.isDeleted.equals(false),
+      ),
+    ]);
 
-        for (final tx in txs) {
+    return joined.watch().map((rows) {
+      final Map<int, Customer> customerMap = {};
+      final Map<int, int> balanceMap = {};
+      final Map<int, DateTime> lastDateMap = {};
+
+      for (final row in rows) {
+        final cust = row.readTable(_db.customers);
+        final tx = row.readTableOrNull(_db.customerTransactions);
+
+        customerMap[cust.id] = cust;
+        balanceMap.putIfAbsent(cust.id, () => 0);
+
+        if (tx != null) {
           if (tx.type == 'credit' || tx.type == 'adjustment_debit') {
-            balance += tx.amountPaisa;
+            balanceMap[cust.id] = balanceMap[cust.id]! + tx.amountPaisa;
           } else if (tx.type == 'payment' || tx.type == 'adjustment_credit') {
-            balance -= tx.amountPaisa;
+            balanceMap[cust.id] = balanceMap[cust.id]! - tx.amountPaisa;
           }
-          lastDate = tx.date;
-        }
 
-        result.add(CustomerWithBalance(
-          customer: cust,
-          balancePaisa: balance,
-          lastTransactionDate: lastDate,
-        ));
+          final currentLast = lastDateMap[cust.id];
+          if (currentLast == null || tx.date.isAfter(currentLast)) {
+            lastDateMap[cust.id] = tx.date;
+          }
+        }
       }
-      return result;
+
+      return customerMap.values.map((c) => CustomerWithBalance(
+        customer: c,
+        balancePaisa: balanceMap[c.id] ?? 0,
+        lastTransactionDate: lastDateMap[c.id],
+      )).toList();
     });
+  }
+
+  Stream<List<CustomerTransaction>> watchCustomerTransactions(int customerId) {
+    return _db.watchCustomerTransactions(customerId);
   }
 
   Future<int> getCustomerBalance(int customerId) async {
@@ -294,3 +315,9 @@ final customersWithBalancesStreamProvider = StreamProvider<List<CustomerWithBala
   final repo = ref.watch(customerRepositoryProvider);
   return repo.watchCustomersWithBalances();
 });
+
+final customerTransactionsStreamProvider = StreamProvider.family<List<CustomerTransaction>, int>((ref, customerId) {
+  final repo = ref.watch(customerRepositoryProvider);
+  return repo.watchCustomerTransactions(customerId);
+});
+

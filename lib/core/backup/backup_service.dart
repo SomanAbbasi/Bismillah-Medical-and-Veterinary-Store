@@ -93,15 +93,23 @@ class BackupService {
     return dir;
   }
 
-  /// Creates a complete ZIP backup containing the SQLite database, attachments, and manifest.json
+  /// Creates a complete ZIP backup containing the SQLite database, JSON export, attachments, and manifest.json
   Future<File> createBackup(AppDatabase db) async {
-    // 1. Gather record statistics for manifest
+    // 0. Force SQLite WAL checkpoint to flush all pending transactions to disk
+    try {
+      await db.customStatement('PRAGMA wal_checkpoint(TRUNCATE);');
+    } catch (_) {}
+
+    // 1. Gather all store records for complete JSON dump and manifest
     final medicines = await db.getAllMedicines();
     final customers = await db.getAllCustomers();
+    final customerTxs = await (db.select(db.customerTransactions)..where((tbl) => tbl.isDeleted.equals(false))).get();
     final suppliers = await db.getAllSuppliers();
-    final sales = await db.select(db.sales).get();
-    final expenses = await db.select(db.expenses).get();
+    final supplierTxs = await (db.select(db.supplierTransactions)..where((tbl) => tbl.isDeleted.equals(false))).get();
+    final sales = await (db.select(db.sales)..where((tbl) => tbl.isDeleted.equals(false))).get();
+    final expenses = await (db.select(db.expenses)..where((tbl) => tbl.isDeleted.equals(false))).get();
     final attachments = await db.getAllAttachments();
+    final settings = await (db.select(db.appSettings)).get();
 
     final now = DateTime.now();
     final timestampStr = DateFormat('yyyy-MM-dd_HH-mm').format(now);
@@ -111,7 +119,7 @@ class BackupService {
       schemaVersion: db.schemaVersion,
       timestamp: now.toIso8601String(),
       medicineCount: medicines.length,
-      batchCount: 0,
+      batchCount: medicines.where((m) => m.batchNumber != null && m.batchNumber!.isNotEmpty).length,
       customerCount: customers.length,
       supplierCount: suppliers.length,
       saleCount: sales.length,
@@ -126,7 +134,23 @@ class BackupService {
     }
     final dbBytes = await dbFile.readAsBytes();
 
-    // 3. Prepare ZIP Archive
+    // 3. Prepare full JSON data dump
+    final storeData = {
+      'timestamp': now.toIso8601String(),
+      'medicines': medicines.map((m) => m.toJson()).toList(),
+      'customers': customers.map((c) => c.toJson()).toList(),
+      'customerTransactions': customerTxs.map((t) => t.toJson()).toList(),
+      'suppliers': suppliers.map((s) => s.toJson()).toList(),
+      'supplierTransactions': supplierTxs.map((t) => t.toJson()).toList(),
+      'sales': sales.map((s) => s.toJson()).toList(),
+      'expenses': expenses.map((e) => e.toJson()).toList(),
+      'attachments': attachments.map((a) => a.toJson()).toList(),
+      'settings': {for (final s in settings) s.key: s.value},
+    };
+    final storeDataJson = jsonEncode(storeData);
+    final storeDataBytes = utf8.encode(storeDataJson);
+
+    // 4. Prepare ZIP Archive
     final archive = Archive();
 
     // Add manifest.json
@@ -136,12 +160,17 @@ class BackupService {
       ArchiveFile('manifest.json', manifestBytes.length, manifestBytes),
     );
 
-    // Add database file
+    // Add complete structured JSON backup
+    archive.addFile(
+      ArchiveFile('store_data.json', storeDataBytes.length, storeDataBytes),
+    );
+
+    // Add SQLite database file
     archive.addFile(
       ArchiveFile('database.sqlite', dbBytes.length, dbBytes),
     );
 
-    // Add attachments
+    // Add image attachments
     final attachDir = await _attachmentService.getAttachmentsDirectory();
     if (await attachDir.exists()) {
       final files = attachDir.listSync().whereType<File>();
@@ -154,7 +183,7 @@ class BackupService {
       }
     }
 
-    // 4. Encode ZIP
+    // 5. Encode ZIP
     final zipEncoder = ZipEncoder();
     final zipData = zipEncoder.encode(archive);
 
@@ -163,10 +192,31 @@ class BackupService {
     final backupFile = File(p.join(backupDir.path, backupFileName));
     await backupFile.writeAsBytes(zipData);
 
+    // Copy to Downloads folder on Android for easy access by user
+    try {
+      final downloadDir = Directory('/storage/emulated/0/Download');
+      if (await downloadDir.exists()) {
+        final targetDownloadFile = File(p.join(downloadDir.path, backupFileName));
+        await targetDownloadFile.writeAsBytes(zipData);
+      }
+    } catch (_) {}
+
     // Record last backup timestamp in settings
     await db.setSetting('last_backup_timestamp', now.toIso8601String());
 
     return backupFile;
+  }
+
+  Future<String?> copyBackupToDownloads(File backupFile) async {
+    try {
+      final downloadDir = Directory('/storage/emulated/0/Download');
+      if (await downloadDir.exists()) {
+        final target = File(p.join(downloadDir.path, p.basename(backupFile.path)));
+        await backupFile.copy(target.path);
+        return target.path;
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// Validates a chosen backup ZIP file before any restore operation
