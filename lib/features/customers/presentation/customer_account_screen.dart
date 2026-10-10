@@ -14,6 +14,7 @@ import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../core/utils/receipt_share_helper.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/currency_field.dart';
@@ -246,8 +247,14 @@ class _CustomerAccountScreenState extends ConsumerState<CustomerAccountScreen> {
       loading: () => const Scaffold(
         body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
       ),
-      error: (err, _) => Scaffold(
-        body: Center(child: Text('Error: $err')),
+      error: (err, stack) => Scaffold(
+        appBar: AppBar(title: const Text('Customer Account')),
+        body: AppErrorWidget(
+          title: 'Unable to load customer',
+          error: err,
+          stackTrace: stack,
+          onRetry: () => ref.invalidate(customersWithBalancesStreamProvider),
+        ),
       ),
       data: (customers) {
         final matching = customers.where((c) => c.customer.id == widget.customerId).toList();
@@ -322,7 +329,12 @@ class _CustomerAccountScreenState extends ConsumerState<CustomerAccountScreen> {
 
               return txsAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                error: (err, _) => Center(child: Text('Error: $err')),
+                error: (err, stack) => AppErrorWidget(
+                  title: 'Unable to load transactions',
+                  error: err,
+                  stackTrace: stack,
+                  onRetry: () => ref.invalidate(customerTransactionsStreamProvider(cust.id)),
+                ),
                 data: (rawTxs) {
                   // Filter by date range or specific single date if selected
                   final filtered = rawTxs.where((t) {

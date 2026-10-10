@@ -6,6 +6,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/date_formatter.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../data/expense_repository.dart';
@@ -37,7 +38,12 @@ class ExpensesScreen extends ConsumerWidget {
       ),
       body: expensesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-        error: (err, _) => Center(child: Text('Error: $err')),
+        error: (err, stack) => AppErrorWidget(
+          title: 'Unable to load expenses',
+          error: err,
+          stackTrace: stack,
+          onRetry: () => ref.invalidate(expensesStreamProvider),
+        ),
         data: (expenses) {
           if (expenses.isEmpty) {
             return EmptyState(

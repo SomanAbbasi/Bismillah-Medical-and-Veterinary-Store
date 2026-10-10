@@ -6,6 +6,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/date_formatter.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/metric_card.dart';
 import '../../../core/widgets/search_field.dart';
@@ -113,7 +114,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> with SingleTi
               Expanded(
                 child: customersAsync.when(
                   loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                  error: (err, _) => Center(child: Text('Error: $err')),
+                  error: (err, stack) => AppErrorWidget(
+                    title: 'Unable to load customers',
+                    error: err,
+                    stackTrace: stack,
+                    onRetry: () => ref.invalidate(customersWithBalancesStreamProvider),
+                  ),
                   data: (customers) {
                     final totalReceivable = customers
                         .where((c) => c.balancePaisa > 0)
@@ -240,7 +246,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> with SingleTi
               Expanded(
                 child: suppliersAsync.when(
                   loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                  error: (err, _) => Center(child: Text('Error: $err')),
+                  error: (err, stack) => AppErrorWidget(
+                    title: 'Unable to load suppliers',
+                    error: err,
+                    stackTrace: stack,
+                    onRetry: () => ref.invalidate(suppliersWithBalancesStreamProvider),
+                  ),
                   data: (suppliers) {
                     final totalPayable = suppliers
                         .where((s) => s.balancePaisa > 0)

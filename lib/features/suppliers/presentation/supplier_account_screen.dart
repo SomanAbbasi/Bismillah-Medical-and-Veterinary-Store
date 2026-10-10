@@ -14,6 +14,7 @@ import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../core/utils/receipt_share_helper.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/currency_field.dart';
@@ -246,8 +247,14 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
       loading: () => const Scaffold(
         body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
       ),
-      error: (err, _) => Scaffold(
-        body: Center(child: Text('Error: $err')),
+      error: (err, stack) => Scaffold(
+        appBar: AppBar(title: const Text('Supplier Account')),
+        body: AppErrorWidget(
+          title: 'Unable to load supplier',
+          error: err,
+          stackTrace: stack,
+          onRetry: () => ref.invalidate(suppliersWithBalancesStreamProvider),
+        ),
       ),
       data: (suppliers) {
         final matching = suppliers.where((s) => s.supplier.id == widget.supplierId).toList();
@@ -322,7 +329,12 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
 
               return txsAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                error: (err, _) => Center(child: Text('Error: $err')),
+                error: (err, stack) => AppErrorWidget(
+                  title: 'Unable to load transactions',
+                  error: err,
+                  stackTrace: stack,
+                  onRetry: () => ref.invalidate(supplierTransactionsStreamProvider(supplier.id)),
+                ),
                 data: (rawTxs) {
                   // Filter by date range or specific single date if selected
                   final filtered = rawTxs.where((t) {

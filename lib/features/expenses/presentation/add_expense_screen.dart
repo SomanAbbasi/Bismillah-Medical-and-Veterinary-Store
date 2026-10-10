@@ -9,6 +9,7 @@ import '../../../core/files/attachment_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/currency_field.dart';
 import '../../../core/widgets/date_field.dart';
@@ -153,7 +154,10 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save expense: $e')),
+          SnackBar(
+            content: Text(AppErrorFormatter.toUserFriendlyMessage(e)),
+            backgroundColor: AppColors.danger,
+          ),
         );
       }
     } finally {

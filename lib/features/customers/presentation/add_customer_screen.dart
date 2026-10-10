@@ -6,6 +6,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/primary_button.dart';
 import '../data/customer_repository.dart';
@@ -117,7 +118,7 @@ class _AddCustomerScreenState extends ConsumerState<AddCustomerScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save customer: $e'), backgroundColor: AppColors.danger),
+          SnackBar(content: Text(AppErrorFormatter.toUserFriendlyMessage(e)), backgroundColor: AppColors.danger),
         );
       }
     } finally {

@@ -11,6 +11,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/receipt_share_helper.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/currency_field.dart';
 import '../../../core/widgets/date_field.dart';
@@ -196,7 +197,11 @@ class _AddCreditScreenState extends ConsumerState<AddCreditScreen> {
                     const SizedBox(height: AppSpacing.xs),
                     customersAsync.when(
                       loading: () => const LinearProgressIndicator(),
-                      error: (err, _) => Text('Error: $err'),
+                      error: (err, _) => AppErrorWidget(
+                        isCompact: true,
+                        error: err,
+                        onRetry: () => ref.invalidate(customersWithBalancesStreamProvider),
+                      ),
                       data: (customers) {
                         return Container(
                           padding: const EdgeInsets.symmetric(horizontal: 14),

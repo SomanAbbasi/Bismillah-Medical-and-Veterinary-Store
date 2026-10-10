@@ -7,6 +7,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/date_formatter.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/status_chip.dart';
@@ -64,7 +65,12 @@ class SalesScreen extends ConsumerWidget {
       ),
       body: salesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-        error: (err, _) => Center(child: Text('Error: $err')),
+        error: (err, stack) => AppErrorWidget(
+          title: 'Unable to load sales',
+          error: err,
+          stackTrace: stack,
+          onRetry: () => ref.invalidate(recentSalesStreamProvider),
+        ),
         data: (sales) {
           if (sales.isEmpty) {
             return EmptyState(

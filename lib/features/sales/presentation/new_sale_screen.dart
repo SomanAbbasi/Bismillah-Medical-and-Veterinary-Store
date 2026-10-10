@@ -10,6 +10,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/currency_field.dart';
 import '../../../core/widgets/date_field.dart';
@@ -228,7 +229,10 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save sale: $e')),
+          SnackBar(
+            content: Text(AppErrorFormatter.toUserFriendlyMessage(e)),
+            backgroundColor: AppColors.danger,
+          ),
         );
       }
     } finally {
@@ -366,7 +370,11 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                       const SizedBox(height: AppSpacing.xs),
                       customersAsync.when(
                         loading: () => const LinearProgressIndicator(),
-                        error: (err, _) => Text('Error: $err'),
+                        error: (err, _) => AppErrorWidget(
+                          isCompact: true,
+                          error: err,
+                          onRetry: () => ref.invalidate(customersWithBalancesStreamProvider),
+                        ),
                         data: (customers) {
                           if (customers.isEmpty) {
                             return OutlinedButton.icon(

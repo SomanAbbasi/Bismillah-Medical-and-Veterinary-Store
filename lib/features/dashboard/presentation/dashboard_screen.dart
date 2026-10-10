@@ -15,6 +15,7 @@ import '../../../core/utils/expiry_utils.dart';
 import '../../../core/widgets/metric_card.dart';
 import '../../../core/widgets/quick_action_sheet.dart';
 import '../../../core/permissions/permission_manager.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/status_chip.dart';
 import '../data/dashboard_provider.dart';
@@ -158,25 +159,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
           loading: () => const Center(
             child: CircularProgressIndicator(color: AppColors.primary),
           ),
-          error: (err, stack) => Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.error_outline, size: 40, color: AppColors.danger),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text('Failed to load dashboard', style: AppTypography.heading3),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(err.toString(), style: AppTypography.bodySmall, textAlign: TextAlign.center),
-                  const SizedBox(height: AppSpacing.md),
-                  ElevatedButton(
-                    onPressed: () => ref.invalidate(dashboardSummaryProvider),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            ),
+          error: (err, stack) => AppErrorWidget(
+            title: 'Failed to load dashboard',
+            error: err,
+            stackTrace: stack,
+            onRetry: () {
+              ref.invalidate(databaseProvider);
+              ref.invalidate(dashboardSummaryProvider);
+              _loadShopName();
+            },
           ),
           data: (summary) {
             return ListView(

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/date_field.dart';
 import '../../../core/widgets/primary_button.dart';
@@ -121,7 +122,10 @@ class _AddEditMedicineScreenState extends ConsumerState<AddEditMedicineScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save medicine: $e')),
+          SnackBar(
+            content: Text(AppErrorFormatter.toUserFriendlyMessage(e)),
+            backgroundColor: AppColors.danger,
+          ),
         );
       }
     } finally {

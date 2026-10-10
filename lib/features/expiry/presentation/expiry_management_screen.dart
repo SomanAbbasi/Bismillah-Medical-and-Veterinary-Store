@@ -9,6 +9,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../core/utils/expiry_utils.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/search_field.dart';
 import '../../../core/widgets/status_chip.dart';
@@ -149,7 +150,12 @@ class _ExpiryManagementScreenState extends ConsumerState<ExpiryManagementScreen>
             Expanded(
               child: medicinesAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                error: (err, _) => Center(child: Text('Error: $err')),
+                error: (err, stack) => AppErrorWidget(
+                  title: 'Unable to load expiry list',
+                  error: err,
+                  stackTrace: stack,
+                  onRetry: () => ref.invalidate(medicinesStreamProvider),
+                ),
                 data: (medicines) {
                   final now = DateTime.now();
                   final today = DateTime(now.year, now.month, now.day);

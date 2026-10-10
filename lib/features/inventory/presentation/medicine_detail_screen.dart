@@ -6,6 +6,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../core/utils/expiry_utils.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/status_chip.dart';
 import '../data/inventory_repository.dart';
@@ -66,7 +67,12 @@ class MedicineDetailScreen extends ConsumerWidget {
       ),
       body: medicinesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-        error: (err, _) => Center(child: Text('Error: $err')),
+        error: (err, stack) => AppErrorWidget(
+          title: 'Unable to load medicine details',
+          error: err,
+          stackTrace: stack,
+          onRetry: () => ref.invalidate(medicinesStreamProvider),
+        ),
         data: (medicines) {
           final matching = medicines.where((m) => m.id == medicineId).toList();
           if (matching.isEmpty) {

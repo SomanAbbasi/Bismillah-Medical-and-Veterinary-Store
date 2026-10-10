@@ -11,6 +11,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/receipt_share_helper.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/currency_field.dart';
 import '../../../core/widgets/date_field.dart';
@@ -151,7 +152,7 @@ class _RecordSupplierPaymentScreenState extends ConsumerState<RecordSupplierPaym
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger),
+          SnackBar(content: Text(AppErrorFormatter.toUserFriendlyMessage(e)), backgroundColor: AppColors.danger),
         );
       }
     } finally {
@@ -191,7 +192,11 @@ class _RecordSupplierPaymentScreenState extends ConsumerState<RecordSupplierPaym
 
                     suppliersAsync.when(
                       loading: () => const LinearProgressIndicator(),
-                      error: (err, _) => Text('Error loading suppliers: $err'),
+                      error: (err, _) => AppErrorWidget(
+                        isCompact: true,
+                        error: err,
+                        onRetry: () => ref.invalidate(suppliersWithBalancesStreamProvider),
+                      ),
                       data: (suppliers) {
                         return DropdownButtonFormField<int>(
                           initialValue: _selectedSupplierId,

@@ -8,6 +8,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../core/utils/expiry_utils.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/status_chip.dart';
@@ -160,7 +161,12 @@ class _InventoryListScreenState extends ConsumerState<InventoryListScreen> with 
       ),
       body: medicinesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-        error: (err, _) => Center(child: Text('Error: $err')),
+        error: (err, stack) => AppErrorWidget(
+          title: 'Unable to load medicines',
+          error: err,
+          stackTrace: stack,
+          onRetry: () => ref.invalidate(medicinesStreamProvider),
+        ),
         data: (allMedicines) {
           return Column(
             children: [

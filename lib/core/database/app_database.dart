@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'schema_reconciler.dart';
 import 'tables.dart';
 import 'connection/connection.dart';
 
@@ -20,7 +21,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? e]) : super(e ?? openConnection());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -28,11 +29,10 @@ class AppDatabase extends _$AppDatabase {
       await m.createAll();
     },
     onUpgrade: (Migrator m, int from, int to) async {
-      if (from < 4) {
-        try {
-          await m.addColumn(medicines, medicines.batchNumber);
-        } catch (_) {}
-      }
+      await SchemaReconciler.reconcile(this);
+    },
+    beforeOpen: (OpeningDetails details) async {
+      await SchemaReconciler.reconcile(this);
     },
   );
 

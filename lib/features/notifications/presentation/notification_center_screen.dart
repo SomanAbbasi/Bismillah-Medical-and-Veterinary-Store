@@ -9,6 +9,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../core/utils/expiry_utils.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/status_chip.dart';
 import '../../inventory/data/inventory_repository.dart';
@@ -59,7 +60,12 @@ class _NotificationCenterScreenState extends ConsumerState<NotificationCenterScr
       ),
       body: medicinesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-        error: (err, _) => Center(child: Text('Error: $err')),
+        error: (err, stack) => AppErrorWidget(
+          title: 'Unable to load notifications',
+          error: err,
+          stackTrace: stack,
+          onRetry: () => ref.invalidate(medicinesStreamProvider),
+        ),
         data: (medicines) {
           final activeAlerts = medicines.where((m) {
             if (m.isReminderDisabled) return false;
