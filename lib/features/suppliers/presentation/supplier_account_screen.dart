@@ -19,7 +19,6 @@ import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/currency_field.dart';
 import '../../../core/widgets/date_field.dart';
 import '../../../core/widgets/primary_button.dart';
-import '../../../core/widgets/secondary_button.dart';
 import '../../../core/widgets/status_chip.dart';
 import '../data/supplier_repository.dart';
 
@@ -86,6 +85,92 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
     );
   }
 
+  List<SupplierTransactionWithRunningBalance> _filterHistory(List<SupplierTransactionWithRunningBalance> raw) {
+    if (_startDate == null || _endDate == null) return raw;
+    return raw.where((h) {
+      final txDate = h.transaction.date.toLocal();
+      final txDay = DateTime(txDate.year, txDate.month, txDate.day);
+      final sDay = DateTime(_startDate!.toLocal().year, _startDate!.toLocal().month, _startDate!.toLocal().day);
+      final eDay = DateTime(_endDate!.toLocal().year, _endDate!.toLocal().month, _endDate!.toLocal().day);
+
+      if (_isSingleDay) {
+        return txDay.year == sDay.year && txDay.month == sDay.month && txDay.day == sDay.day;
+      } else {
+        return (txDay.isAtSameMomentAs(sDay) || txDay.isAfter(sDay)) &&
+               (txDay.isAtSameMomentAs(eDay) || txDay.isBefore(eDay));
+      }
+    }).toList();
+  }
+
+  Future<void> _showCustomDateDialog(BuildContext context) async {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Custom Date Filter', style: AppTypography.heading3),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryLight.withValues(alpha: 0.3),
+                      borderRadius: AppRadii.roundedMd,
+                    ),
+                    child: const Icon(Icons.calendar_today, color: AppColors.primary),
+                  ),
+                  title: const Text('Specific Single Day', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('View transactions from one exact date (e.g. today or past date)'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickSingleDate(context);
+                  },
+                ),
+                const Divider(),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryLight.withValues(alpha: 0.3),
+                      borderRadius: AppRadii.roundedMd,
+                    ),
+                    child: const Icon(Icons.date_range, color: AppColors.primary),
+                  ),
+                  title: const Text('Custom Date Range', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('View transactions between two dates (From Date - To Date)'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickDateRange(context);
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _pickSingleDate(BuildContext context) async {
     final picked = await showDatePicker(
       context: context,
@@ -95,8 +180,8 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
     );
     if (picked != null && mounted) {
       setState(() {
-        _startDate = DateFormatter.toDateOnly(picked);
-        _endDate = DateTime(picked.year, picked.month, picked.day, 23, 59, 59);
+        _startDate = DateTime(picked.year, picked.month, picked.day);
+        _endDate = DateTime(picked.year, picked.month, picked.day);
         _isSingleDay = true;
       });
     }
@@ -114,8 +199,8 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
 
     if (range != null && mounted) {
       setState(() {
-        _startDate = range.start;
-        _endDate = DateTime(range.end.year, range.end.month, range.end.day, 23, 59, 59);
+        _startDate = DateTime(range.start.year, range.start.month, range.start.day);
+        _endDate = DateTime(range.end.year, range.end.month, range.end.day);
         _isSingleDay = false;
       });
     }
@@ -182,16 +267,18 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                 icon: const Icon(Icons.picture_as_pdf_outlined),
                 tooltip: 'Export PDF Statement',
                 onPressed: () async {
-                  final history = await ref.read(supplierRepositoryProvider).getTransactionsWithRunningBalance(supplier.id);
-                  _exportPdfStatement(item, history);
+                  final rawHistory = await ref.read(supplierRepositoryProvider).getTransactionsWithRunningBalance(supplier.id);
+                  final history = _filterHistory(rawHistory);
+                  _exportPdfStatement(item, history.isNotEmpty ? history : rawHistory);
                 },
               ),
               IconButton(
                 icon: const Icon(Icons.share_outlined),
                 tooltip: 'Share Statement (WhatsApp)',
                 onPressed: () async {
-                  final history = await ref.read(supplierRepositoryProvider).getTransactionsWithRunningBalance(supplier.id);
-                  _shareStatement(item, history);
+                  final rawHistory = await ref.read(supplierRepositoryProvider).getTransactionsWithRunningBalance(supplier.id);
+                  final history = _filterHistory(rawHistory);
+                  _shareStatement(item, history.isNotEmpty ? history : rawHistory);
                 },
               ),
               IconButton(
@@ -237,10 +324,21 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                 loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
                 error: (err, _) => Center(child: Text('Error: $err')),
                 data: (rawTxs) {
-                  // Filter by date range if selected
+                  // Filter by date range or specific single date if selected
                   final filtered = rawTxs.where((t) {
-                    if (_startDate != null && t.date.isBefore(_startDate!)) return false;
-                    if (_endDate != null && t.date.isAfter(_endDate!)) return false;
+                    if (_startDate != null && _endDate != null) {
+                      final txDate = t.date.toLocal();
+                      final txDay = DateTime(txDate.year, txDate.month, txDate.day);
+                      final sDay = DateTime(_startDate!.toLocal().year, _startDate!.toLocal().month, _startDate!.toLocal().day);
+                      final eDay = DateTime(_endDate!.toLocal().year, _endDate!.toLocal().month, _endDate!.toLocal().day);
+
+                      if (_isSingleDay) {
+                        return txDay.year == sDay.year && txDay.month == sDay.month && txDay.day == sDay.day;
+                      } else {
+                        return (txDay.isAtSameMomentAs(sDay) || txDay.isAfter(sDay)) &&
+                               (txDay.isAtSameMomentAs(eDay) || txDay.isBefore(eDay));
+                      }
+                    }
                     return true;
                   }).toList();
 
@@ -355,18 +453,74 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child: SecondaryButton(
-                              label: 'WhatsApp Statement',
-                              icon: Icons.share,
-                              onPressed: () => _shareStatement(item, history),
+                            child: InkWell(
+                              onTap: () => _shareStatement(item, history),
+                              borderRadius: AppRadii.roundedMd,
+                              child: Container(
+                                height: 46,
+                                padding: const EdgeInsets.symmetric(horizontal: 10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE8F8EE),
+                                  borderRadius: AppRadii.roundedMd,
+                                  border: Border.all(color: const Color(0xFF25D366), width: 1.5),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: const [
+                                    Icon(Icons.share, size: 18, color: Color(0xFF128C7E)),
+                                    SizedBox(width: 6),
+                                    Flexible(
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          'WhatsApp Share',
+                                          style: TextStyle(
+                                            color: Color(0xFF128C7E),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                           const SizedBox(width: AppSpacing.sm),
                           Expanded(
-                            child: SecondaryButton(
-                              label: 'Export PDF Statement',
-                              icon: Icons.picture_as_pdf,
-                              onPressed: () => _exportPdfStatement(item, history),
+                            child: InkWell(
+                              onTap: () => _exportPdfStatement(item, history),
+                              borderRadius: AppRadii.roundedMd,
+                              child: Container(
+                                height: 46,
+                                padding: const EdgeInsets.symmetric(horizontal: 10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFEBEE),
+                                  borderRadius: AppRadii.roundedMd,
+                                  border: Border.all(color: const Color(0xFFD32F2F), width: 1.5),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: const [
+                                    Icon(Icons.picture_as_pdf_rounded, size: 18, color: Color(0xFFC62828)),
+                                    SizedBox(width: 6),
+                                    Flexible(
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          'Export PDF',
+                                          style: TextStyle(
+                                            color: Color(0xFFC62828),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         ],
@@ -394,8 +548,8 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                               () {
                                 final now = DateFormatter.today();
                                 setState(() {
-                                  _startDate = now;
-                                  _endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+                                  _startDate = DateTime(now.year, now.month, now.day);
+                                  _endDate = DateTime(now.year, now.month, now.day);
                                   _isSingleDay = true;
                                 });
                               },
@@ -407,20 +561,15 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                                 final now = DateTime.now();
                                 setState(() {
                                   _startDate = DateTime(now.year, now.month, 1);
-                                  _endDate = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+                                  _endDate = DateTime(now.year, now.month + 1, 0);
                                   _isSingleDay = false;
                                 });
                               },
                             ),
                             _buildPeriodChip(
-                              '1 Day',
-                              _startDate != null && _isSingleDay && !DateFormatter.isToday(_startDate!),
-                              () => _pickSingleDate(context),
-                            ),
-                            _buildPeriodChip(
-                              'Range',
-                              _startDate != null && !_isSingleDay && _startDate!.day != 1,
-                              () => _pickDateRange(context),
+                              'Custom Date',
+                              _startDate != null && !(_startDate != null && _isSingleDay && DateFormatter.isToday(_startDate!)) && !(_startDate != null && !_isSingleDay && _startDate!.day == 1),
+                              () => _showCustomDateDialog(context),
                             ),
                           ],
                         ),
@@ -449,13 +598,7 @@ class _SupplierAccountScreenState extends ConsumerState<SupplierAccountScreen> {
                                 ),
                               ),
                               InkWell(
-                                onTap: () {
-                                  if (_isSingleDay) {
-                                    _pickSingleDate(context);
-                                  } else {
-                                    _pickDateRange(context);
-                                  }
-                                },
+                                onTap: () => _showCustomDateDialog(context),
                                 child: const Text('Change', style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
                               ),
                               const SizedBox(width: 10),

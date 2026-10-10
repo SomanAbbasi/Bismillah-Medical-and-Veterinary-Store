@@ -251,7 +251,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                   child: ClipOval(
                                     child: _logoFile != null && _logoFile!.existsSync()
                                         ? Image.file(_logoFile!, fit: BoxFit.cover)
-                                        : const Icon(Icons.local_hospital, size: 42, color: AppColors.primary),
+                                        : Image.asset(
+                                            'assets/images/default_store_logo.png',
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) => const Icon(Icons.local_hospital, size: 42, color: AppColors.primary),
+                                          ),
                                   ),
                                 ),
                                 Positioned(
@@ -274,8 +278,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             const SizedBox(height: 6),
                             Text(
                               _shopLogoPath != null && _shopLogoPath!.isNotEmpty
-                                  ? 'Store Logo Uploaded (Printed on PDFs)'
-                                  : 'Tap to Add Store Logo (For PDF Reports)',
+                                  ? 'Custom Logo Uploaded (Printed on PDFs)'
+                                  : 'Default Bismillah Logo Active (Printed on PDFs)',
                               style: AppTypography.bodySmall.copyWith(color: AppColors.textMuted),
                             ),
                             if (_shopLogoPath != null && _shopLogoPath!.isNotEmpty) ...[
@@ -286,7 +290,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                     _logoFile = null;
                                   });
                                 },
-                                child: const Text('Remove Logo', style: TextStyle(color: AppColors.danger, fontSize: 12)),
+                                child: const Text('Reset to Default Logo', style: TextStyle(color: AppColors.danger, fontSize: 12)),
                               ),
                             ],
                           ],

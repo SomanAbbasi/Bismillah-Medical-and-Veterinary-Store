@@ -72,27 +72,38 @@ class _SalesAndExpensesScreenState extends ConsumerState<SalesAndExpensesScreen>
 
   (DateTime, DateTime) _getDateRange() {
     final now = DateTime.now();
-    final todayMidnight = DateFormatter.today();
-    final endOfToday = todayMidnight.add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1));
+    final today = DateTime(now.year, now.month, now.day);
 
     switch (_period) {
       case SalesExpensePeriod.today:
-        return (todayMidnight, endOfToday);
+        return (today, today);
       case SalesExpensePeriod.thisWeek:
-        final startOfWeek = todayMidnight.subtract(Duration(days: todayMidnight.weekday - 1));
-        return (startOfWeek, endOfToday);
+        final startOfWeek = today.subtract(Duration(days: today.weekday - 1));
+        return (startOfWeek, today);
       case SalesExpensePeriod.thisMonth:
         final startOfMonth = DateTime(now.year, now.month, 1);
-        return (startOfMonth, endOfToday);
+        return (startOfMonth, today);
       case SalesExpensePeriod.singleDate:
-        final dayStart = DateFormatter.toDateOnly(_selectedSingleDate);
-        final dayEnd = dayStart.add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1));
-        return (dayStart, dayEnd);
+        final day = DateTime(_selectedSingleDate.year, _selectedSingleDate.month, _selectedSingleDate.day);
+        return (day, day);
       case SalesExpensePeriod.custom:
-        return (
-          DateFormatter.toDateOnly(_customStart),
-          DateFormatter.toDateOnly(_customEnd).add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1)),
-        );
+        final start = DateTime(_customStart.year, _customStart.month, _customStart.day);
+        final end = DateTime(_customEnd.year, _customEnd.month, _customEnd.day);
+        return (start, end);
+    }
+  }
+
+  bool _matchesDate(DateTime recordDate, DateTime startDate, DateTime endDate) {
+    final rLocal = recordDate.toLocal();
+    final rDay = DateTime(rLocal.year, rLocal.month, rLocal.day);
+    final sDay = DateTime(startDate.toLocal().year, startDate.toLocal().month, startDate.toLocal().day);
+    final eDay = DateTime(endDate.toLocal().year, endDate.toLocal().month, endDate.toLocal().day);
+
+    if (_period == SalesExpensePeriod.singleDate || _period == SalesExpensePeriod.today) {
+      return rDay.year == sDay.year && rDay.month == sDay.month && rDay.day == sDay.day;
+    } else {
+      return (rDay.isAtSameMomentAs(sDay) || rDay.isAfter(sDay)) &&
+             (rDay.isAtSameMomentAs(eDay) || rDay.isBefore(eDay));
     }
   }
 
@@ -111,6 +122,75 @@ class _SalesAndExpensesScreenState extends ConsumerState<SalesAndExpensesScreen>
     }
   }
 
+  Future<void> _showCustomDateDialog() async {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Custom Date Filter', style: AppTypography.heading3),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryLight.withValues(alpha: 0.3),
+                      borderRadius: AppRadii.roundedMd,
+                    ),
+                    child: const Icon(Icons.calendar_today, color: AppColors.primary),
+                  ),
+                  title: const Text('Specific Single Day', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Filter records for one exact date (e.g. today or any specific past date)'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickSingleDate();
+                  },
+                ),
+                const Divider(),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryLight.withValues(alpha: 0.3),
+                      borderRadius: AppRadii.roundedMd,
+                    ),
+                    child: const Icon(Icons.date_range, color: AppColors.primary),
+                  ),
+                  title: const Text('Custom Date Range', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Filter between two dates (From Date - To Date)'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickDateRange();
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _pickSingleDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -120,7 +200,7 @@ class _SalesAndExpensesScreenState extends ConsumerState<SalesAndExpensesScreen>
     );
     if (picked != null) {
       setState(() {
-        _selectedSingleDate = picked;
+        _selectedSingleDate = DateTime(picked.year, picked.month, picked.day);
         _period = SalesExpensePeriod.singleDate;
       });
     }
@@ -135,8 +215,8 @@ class _SalesAndExpensesScreenState extends ConsumerState<SalesAndExpensesScreen>
     );
     if (picked != null) {
       setState(() {
-        _customStart = picked.start;
-        _customEnd = picked.end;
+        _customStart = DateTime(picked.start.year, picked.start.month, picked.start.day);
+        _customEnd = DateTime(picked.end.year, picked.end.month, picked.end.day);
         _period = SalesExpensePeriod.custom;
       });
     }
@@ -1201,8 +1281,20 @@ class _SalesAndExpensesScreenState extends ConsumerState<SalesAndExpensesScreen>
     final (startDate, endDate) = _getDateRange();
     final isSalesTab = _tabController.index == 0;
 
-    final salesRepo = ref.watch(salesRepositoryProvider);
-    final expenseRepo = ref.watch(expenseRepositoryProvider);
+    final salesAsync = ref.watch(recentSalesStreamProvider);
+    final expensesAsync = ref.watch(expensesStreamProvider);
+
+    final rawSales = salesAsync.value ?? [];
+    final rawExpenses = expensesAsync.value ?? [];
+
+    final sales = rawSales.where((s) => _matchesDate(s.date, startDate, endDate)).toList();
+    final expenses = rawExpenses.where((e) => _matchesDate(e.date, startDate, endDate)).toList();
+
+    final totalSales = sales.fold(0, (sum, s) => sum + s.finalAmountPaisa);
+    final cashSales = sales.fold(0, (sum, s) => sum + s.cashPaidPaisa);
+    final creditSales = sales.fold(0, (sum, s) => sum + s.creditAmountPaisa);
+    final totalExpenses = expenses.fold(0, (sum, e) => sum + e.amountPaisa);
+    final netProfit = totalSales - totalExpenses;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -1212,55 +1304,37 @@ class _SalesAndExpensesScreenState extends ConsumerState<SalesAndExpensesScreen>
           IconButton(
             icon: const Icon(Icons.picture_as_pdf_outlined),
             tooltip: 'Export PDF Report',
-            onPressed: () async {
-              final sales = await salesRepo.getSalesForRange(startDate, endDate);
-              final expenses = await expenseRepo.getExpensesForRange(startDate, endDate);
-              final totalSales = sales.fold(0, (s, e) => s + e.finalAmountPaisa);
-              final cashSales = sales.fold(0, (s, e) => s + e.cashPaidPaisa);
-              final creditSales = sales.fold(0, (s, e) => s + e.creditAmountPaisa);
-              final totalExpenses = expenses.fold(0, (s, e) => s + e.amountPaisa);
-              final netSales = totalSales - totalExpenses;
-              if (context.mounted) {
-                _showPdfExportModal(
-                  context,
-                  totalSales,
-                  cashSales,
-                  creditSales,
-                  totalExpenses,
-                  netSales,
-                  sales,
-                  expenses,
-                  startDate,
-                  endDate,
-                );
-              }
+            onPressed: () {
+              _showPdfExportModal(
+                context,
+                totalSales,
+                cashSales,
+                creditSales,
+                totalExpenses,
+                netProfit,
+                sales,
+                expenses,
+                startDate,
+                endDate,
+              );
             },
           ),
           IconButton(
             icon: const Icon(Icons.analytics_outlined),
             tooltip: 'Financial Report',
-            onPressed: () async {
-              final sales = await salesRepo.getSalesForRange(startDate, endDate);
-              final expenses = await expenseRepo.getExpensesForRange(startDate, endDate);
-              final totalSales = sales.fold(0, (s, e) => s + e.finalAmountPaisa);
-              final cashSales = sales.fold(0, (s, e) => s + e.cashPaidPaisa);
-              final creditSales = sales.fold(0, (s, e) => s + e.creditAmountPaisa);
-              final totalExpenses = expenses.fold(0, (s, e) => s + e.amountPaisa);
-              final netSales = totalSales - totalExpenses;
-              if (context.mounted) {
-                _showReportDialog(
-                  context,
-                  totalSales,
-                  cashSales,
-                  creditSales,
-                  totalExpenses,
-                  netSales,
-                  sales,
-                  expenses,
-                  startDate,
-                  endDate,
-                );
-              }
+            onPressed: () {
+              _showReportDialog(
+                context,
+                totalSales,
+                cashSales,
+                creditSales,
+                totalExpenses,
+                netProfit,
+                sales,
+                expenses,
+                startDate,
+                endDate,
+              );
             },
           ),
           IconButton(
@@ -1289,75 +1363,69 @@ class _SalesAndExpensesScreenState extends ConsumerState<SalesAndExpensesScreen>
       ),
       floatingActionButton: isSalesTab
           ? FloatingActionButton.extended(
-              onPressed: () => context.push('/sales/new'),
+              onPressed: () async {
+                await context.push('/sales/new');
+                if (mounted) setState(() {});
+              },
               backgroundColor: AppColors.primary,
               icon: const Icon(Icons.add, color: Colors.white),
               label: const Text('New Sale', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
             )
           : FloatingActionButton.extended(
-              onPressed: () => context.push('/expenses/new'),
+              onPressed: () async {
+                await context.push('/expenses/new');
+                if (mounted) setState(() {});
+              },
               backgroundColor: AppColors.warning,
               icon: const Icon(Icons.add, color: Colors.white),
               label: const Text('Add Expense', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
             ),
-      body: FutureBuilder<(List<Sale>, List<Expense>)>(
-        future: Future.wait([
-          salesRepo.getSalesForRange(startDate, endDate),
-          expenseRepo.getExpensesForRange(startDate, endDate),
-        ]).then((res) => (res[0] as List<Sale>, res[1] as List<Expense>)),
-        builder: (context, snapshot) {
-          final (sales, expenses) = snapshot.data ?? (<Sale>[], <Expense>[]);
-
-          final totalSales = sales.fold(0, (sum, s) => sum + s.finalAmountPaisa);
-          final totalExpenses = expenses.fold(0, (sum, e) => sum + e.amountPaisa);
-          final netProfit = totalSales - totalExpenses;
-
-          return Column(
-            children: [
-              // Top Period Selector & Net Profit Header
-              Container(
-                color: AppColors.surface,
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                child: Column(
-                  children: [
-                    // Period Selector Bar
-                    Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: AppColors.background,
-                        borderRadius: AppRadii.roundedMd,
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Row(
-                        children: [
-                          _PeriodTab(
-                            label: 'Today',
-                            isSelected: _period == SalesExpensePeriod.today,
-                            onTap: () => setState(() => _period = SalesExpensePeriod.today),
-                          ),
-                          _PeriodTab(
-                            label: 'Week',
-                            isSelected: _period == SalesExpensePeriod.thisWeek,
-                            onTap: () => setState(() => _period = SalesExpensePeriod.thisWeek),
-                          ),
-                          _PeriodTab(
-                            label: 'Month',
-                            isSelected: _period == SalesExpensePeriod.thisMonth,
-                            onTap: () => setState(() => _period = SalesExpensePeriod.thisMonth),
-                          ),
-                          _PeriodTab(
-                            label: '1 Day',
-                            isSelected: _period == SalesExpensePeriod.singleDate,
-                            onTap: _pickSingleDate,
-                          ),
-                          _PeriodTab(
-                            label: 'Range',
-                            isSelected: _period == SalesExpensePeriod.custom,
-                            onTap: _pickDateRange,
-                          ),
-                        ],
-                      ),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(recentSalesStreamProvider);
+          ref.invalidate(expensesStreamProvider);
+        },
+        child: Column(
+          children: [
+            // Top Period Selector & Net Profit Header
+            Container(
+              color: AppColors.surface,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Column(
+                children: [
+                  // Period Selector Bar
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      borderRadius: AppRadii.roundedMd,
+                      border: Border.all(color: AppColors.border),
                     ),
+                    child: Row(
+                      children: [
+                        _PeriodTab(
+                          label: 'Today',
+                          isSelected: _period == SalesExpensePeriod.today,
+                          onTap: () => setState(() => _period = SalesExpensePeriod.today),
+                        ),
+                        _PeriodTab(
+                          label: 'Week',
+                          isSelected: _period == SalesExpensePeriod.thisWeek,
+                          onTap: () => setState(() => _period = SalesExpensePeriod.thisWeek),
+                        ),
+                        _PeriodTab(
+                          label: 'Month',
+                          isSelected: _period == SalesExpensePeriod.thisMonth,
+                          onTap: () => setState(() => _period = SalesExpensePeriod.thisMonth),
+                        ),
+                        _PeriodTab(
+                          label: 'Custom Date',
+                          isSelected: _period == SalesExpensePeriod.singleDate || _period == SalesExpensePeriod.custom,
+                          onTap: _showCustomDateDialog,
+                        ),
+                      ],
+                    ),
+                  ),
 
                     // Active Single Date / Range Filter Banner
                     if (_period == SalesExpensePeriod.singleDate || _period == SalesExpensePeriod.custom) ...[
@@ -1519,11 +1587,10 @@ class _SalesAndExpensesScreenState extends ConsumerState<SalesAndExpensesScreen>
                 ),
               ),
             ],
-          );
-        },
-      ),
-    );
-  }
+          ),
+        ),
+      );
+    }
 
   Widget _buildSalesList(List<Sale> sales) {
     final filtered = sales.where((s) {

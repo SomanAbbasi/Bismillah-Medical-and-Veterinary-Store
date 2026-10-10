@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -187,16 +188,27 @@ class PdfReportService {
     );
   }
 
-  /// Load custom shop logo if exists
+  /// Load custom shop logo if exists, or fallback to default store logo asset
   static Future<pw.MemoryImage?> _loadLogoImage(String? logoPath) async {
-    if (logoPath == null || logoPath.isEmpty) return null;
+    if (logoPath != null && logoPath.isNotEmpty) {
+      try {
+        final file = File(logoPath);
+        if (await file.exists()) {
+          final bytes = await file.readAsBytes();
+          return pw.MemoryImage(bytes);
+        }
+      } catch (_) {}
+    }
+    // Default official store logo asset
     try {
-      final file = File(logoPath);
-      if (await file.exists()) {
-        final bytes = await file.readAsBytes();
-        return pw.MemoryImage(bytes);
-      }
-    } catch (_) {}
+      final data = await rootBundle.load('assets/images/default_store_logo.png');
+      return pw.MemoryImage(data.buffer.asUint8List());
+    } catch (_) {
+      try {
+        final data = await rootBundle.load('assets/images/app_logo.png');
+        return pw.MemoryImage(data.buffer.asUint8List());
+      } catch (_) {}
+    }
     return null;
   }
 
